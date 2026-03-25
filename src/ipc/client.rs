@@ -106,9 +106,7 @@ pub fn request_stop() -> Result<()> {
         }
         Err(e) => {
             // Connection reset is expected when daemon shuts down
-            if e.to_string().contains("Connection reset")
-                || e.to_string().contains("Broken pipe")
-            {
+            if e.to_string().contains("Connection reset") || e.to_string().contains("Broken pipe") {
                 println!("tabra daemon stopped");
                 Ok(())
             } else {

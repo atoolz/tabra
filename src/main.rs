@@ -1,3 +1,8 @@
+// Spec types and loader define the full withfig schema. Many fields and methods
+// are not yet consumed but will be as generators, bash/fish hooks, and other
+// features are added. Suppress dead_code warnings for now.
+#![allow(dead_code)]
+
 mod daemon;
 mod engine;
 mod ipc;

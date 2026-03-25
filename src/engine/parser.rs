@@ -127,7 +127,11 @@ pub fn parse(spec: &Spec, buffer: &str, cursor: usize) -> ParseContext {
     let mut hit_separator = false;
 
     // Skip the first token (the command name itself, e.g. "git")
-    let command_tokens = if tokens.is_empty() { &[][..] } else { &tokens[1..] };
+    let command_tokens = if tokens.is_empty() {
+        &[][..]
+    } else {
+        &tokens[1..]
+    };
     if !tokens.is_empty() {
         subcommand_path.push(tokens[0].clone());
     }
@@ -153,9 +157,11 @@ pub fn parse(spec: &Spec, buffer: &str, cursor: usize) -> ParseContext {
 
         // Try to match a subcommand
         if let Some(subcmds) = &current_cmd.subcommands {
-            if let Some((idx, subcmd)) = subcmds.iter().enumerate().find(|(_, sc)| {
-                sc.names().iter().any(|n| n == token)
-            }) {
+            if let Some((idx, subcmd)) = subcmds
+                .iter()
+                .enumerate()
+                .find(|(_, sc)| sc.names().iter().any(|n| n == token))
+            {
                 subcommand_path.push(token.clone());
                 spec_path.push(idx);
                 current_cmd = subcmd;

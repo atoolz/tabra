@@ -9,8 +9,7 @@
 
 use crate::engine::parser::{ExpectedCompletion, ParseContext};
 use crate::spec::types::{
-    Arg, Opt, SingleOrArray, Spec, Subcommand, Suggestion,
-    SuggestionType, TemplateString,
+    Arg, Opt, SingleOrArray, Spec, Subcommand, Suggestion, SuggestionType, TemplateString,
 };
 use std::path::Path;
 
@@ -83,7 +82,11 @@ pub fn resolve(spec: &Spec, ctx: &ParseContext, cwd: &str) -> Vec<ResolvedSugges
                 // Collect from root first
                 if let Some(opts) = &parent.options {
                     for opt in opts.iter().filter(|o| o.is_persistent) {
-                        if !ctx.used_options.iter().any(|u| opt.names().contains(&u.as_str())) {
+                        if !ctx
+                            .used_options
+                            .iter()
+                            .any(|u| opt.names().contains(&u.as_str()))
+                        {
                             push_option(opt, &mut suggestions);
                         }
                     }
@@ -100,7 +103,11 @@ pub fn resolve(spec: &Spec, ctx: &ParseContext, cwd: &str) -> Vec<ResolvedSugges
                     }
                     if let Some(opts) = &parent.options {
                         for opt in opts.iter().filter(|o| o.is_persistent) {
-                            if !ctx.used_options.iter().any(|u| opt.names().contains(&u.as_str())) {
+                            if !ctx
+                                .used_options
+                                .iter()
+                                .any(|u| opt.names().contains(&u.as_str()))
+                            {
                                 push_option(opt, &mut suggestions);
                             }
                         }
@@ -191,11 +198,7 @@ fn walk_spec<'a>(spec: &'a Spec, path: &[usize]) -> &'a Subcommand {
 }
 
 /// Collect option suggestions, excluding already-used ones.
-fn collect_options(
-    cmd: &Subcommand,
-    used: &[String],
-    suggestions: &mut Vec<ResolvedSuggestion>,
-) {
+fn collect_options(cmd: &Subcommand, used: &[String], suggestions: &mut Vec<ResolvedSuggestion>) {
     if let Some(opts) = &cmd.options {
         for opt in opts {
             // Skip if already used (unless repeatable)
@@ -307,7 +310,7 @@ fn expand_template(
         } else {
             Path::new(cwd).join(dir)
         };
-        let file_prefix = token_path
+        let _file_prefix = token_path
             .file_name()
             .and_then(|f| f.to_str())
             .unwrap_or("");
@@ -315,7 +318,11 @@ fn expand_template(
             dir.to_string_lossy().to_string()
         } else {
             let d = dir.to_string_lossy();
-            if d.is_empty() { String::new() } else { format!("{d}/") }
+            if d.is_empty() {
+                String::new()
+            } else {
+                format!("{d}/")
+            }
         };
         (resolved, dir_prefix)
     } else {
@@ -383,11 +390,7 @@ fn push_suggestion(
     default_kind: SuggestionType,
     suggestions: &mut Vec<ResolvedSuggestion>,
 ) {
-    let names = s
-        .name
-        .as_ref()
-        .map(|n| n.to_vec())
-        .unwrap_or_default();
+    let names = s.name.as_ref().map(|n| n.to_vec()).unwrap_or_default();
     let primary = names.first().cloned().unwrap_or_default();
 
     suggestions.push(ResolvedSuggestion {

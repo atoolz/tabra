@@ -99,9 +99,7 @@ pub enum Response {
     Goodbye,
 
     /// Error message.
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 // ---------------------------------------------------------------------------
