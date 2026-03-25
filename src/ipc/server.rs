@@ -114,16 +114,6 @@ async fn handle_connection(
     Ok(())
 }
 
-/// Remove characters that would break the shell hook's lightweight JSON regex parser.
-/// The zsh hook splits items on `},{` and extracts fields with `[^"]*` regex,
-/// so we must sanitize: backslashes, double quotes, and curly braces.
-fn sanitize_for_shell(s: &str) -> String {
-    s.replace('\\', "")
-        .replace('"', "'")
-        .replace('{', "(")
-        .replace('}', ")")
-}
-
 fn handle_complete(index: &SpecIndex, buffer: &str, cursor: usize, cwd: &str) -> Response {
     // Extract the command name (first token)
     let (tokens, _partial) = parser::tokenize(buffer, cursor);
@@ -157,13 +147,11 @@ fn handle_complete(index: &SpecIndex, buffer: &str, cursor: usize, cwd: &str) ->
 
     let items: Vec<CompletionItem> = scored
         .into_iter()
-        .take(20) // max popup items
+        .take(50) // max items sent to hook (popup only shows MAX_VISIBLE_ITEMS)
         .map(|s| CompletionItem {
-            // Sanitize strings to avoid breaking the shell hook's lightweight JSON parser:
-            // remove double quotes and backslashes from display/description fields.
-            display: sanitize_for_shell(&s.suggestion.display_text),
-            insert: sanitize_for_shell(&s.suggestion.insert_text),
-            description: sanitize_for_shell(&s.suggestion.description),
+            display: s.suggestion.display_text,
+            insert: s.suggestion.insert_text,
+            description: s.suggestion.description,
             kind: s.suggestion.kind,
             match_indices: s.match_indices,
             is_dangerous: s.suggestion.is_dangerous,

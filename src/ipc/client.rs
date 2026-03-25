@@ -42,7 +42,7 @@ fn send_request(request: &Request) -> Result<Response> {
 }
 
 /// Request completions and print the response JSON to stdout.
-/// The shell hook reads this output.
+/// Used by programmatic clients and tests.
 pub fn request_complete(buffer: &str, cursor: usize, cwd: &str) -> Result<()> {
     let request = Request::Complete {
         buffer: buffer.to_string(),
@@ -50,8 +50,37 @@ pub fn request_complete(buffer: &str, cursor: usize, cwd: &str) -> Result<()> {
         cwd: cwd.to_string(),
     };
     let response = send_request(&request)?;
-    // Print the response as JSON for the shell hook to consume
     println!("{}", serde_json::to_string(&response)?);
+    Ok(())
+}
+
+/// Request completions and print shell-friendly output to stdout.
+/// Format: one line per item, tab-separated: display\tinsert\tdescription
+/// First line is the item count. Empty output = no completions.
+/// Used by shell hooks (no JSON parsing needed in zsh/bash/fish).
+pub fn request_complete_shell(buffer: &str, cursor: usize, cwd: &str) -> Result<()> {
+    let request = Request::Complete {
+        buffer: buffer.to_string(),
+        cursor,
+        cwd: cwd.to_string(),
+    };
+    let response = send_request(&request)?;
+    match response {
+        Response::Completions { items, .. } => {
+            println!("{}", items.len());
+            for item in &items {
+                // Tab-separated: display, insert text, description
+                // Replace any tabs/newlines in fields to prevent breaking the format
+                let display = item.display.replace('\t', " ").replace('\n', " ");
+                let insert = item.insert.replace('\t', " ").replace('\n', " ");
+                let desc = item.description.replace('\t', " ").replace('\n', " ");
+                println!("{display}\t{insert}\t{desc}");
+            }
+        }
+        _ => {
+            // No completions: print nothing (empty output)
+        }
+    }
     Ok(())
 }
 

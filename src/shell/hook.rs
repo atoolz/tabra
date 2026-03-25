@@ -3,8 +3,8 @@
 //! The zsh hook integrates with ZLE (Zsh Line Editor) to:
 //!
 //! 1. Intercept keystrokes via a ZLE widget
-//! 2. On each keystroke, send the current BUFFER and CURSOR to the daemon
-//! 3. Receive completion items back as JSON
+//! 2. On each keystroke, call `tabra complete-shell` which returns tab-delimited output
+//! 3. Parse the simple line-per-item format (no JSON, no jq, no python3)
 //! 4. Render the popup overlay below the prompt using ANSI escapes
 //! 5. Handle Tab (accept), Escape (dismiss), Up/Down (navigate)
 //! 6. On accept, insert the selected text into BUFFER and redisplay
@@ -30,9 +30,7 @@ typeset -g _TABRA_POPUP_VISIBLE=0
 typeset -g _TABRA_POPUP_LINES=0
 typeset -g _TABRA_SELECTED=0
 typeset -g _TABRA_ITEM_COUNT=0
-# Cached response from last daemon query (avoids re-querying on navigation)
-typeset -g _TABRA_CACHED_RESPONSE=""
-# Parallel arrays for items (parsed once, reused on navigation)
+# Parallel arrays (parsed from tab-delimited daemon output)
 typeset -ga _TABRA_DISPLAYS=()
 typeset -ga _TABRA_INSERTS=()
 typeset -ga _TABRA_DESCS=()
@@ -41,7 +39,6 @@ typeset -ga _TABRA_DESCS=()
 _tabra_ensure_daemon() {
     tabra status &>/dev/null && return
     tabra daemon &>/dev/null &!
-    # Retry loop instead of fixed sleep
     local i
     for i in 1 2 3 4 5; do
         sleep 0.1
@@ -62,61 +59,40 @@ _tabra_erase_popup() {
     fi
 }
 
-# Parse the daemon response into parallel arrays.
-# Uses pure zsh string operations (no python3, no jq, no external tools).
-# The daemon returns JSON-lines. We parse the essential fields with zsh parameter expansion.
+# Parse daemon output into parallel arrays.
+# Format from `tabra complete-shell`:
+#   Line 1: item count (integer)
+#   Lines 2+: display\tinsert\tdescription (tab-separated)
+# No JSON. No regex. Just IFS splitting on tabs.
 _tabra_parse_response() {
-    local response="$1"
     _TABRA_DISPLAYS=()
     _TABRA_INSERTS=()
     _TABRA_DESCS=()
     _TABRA_ITEM_COUNT=0
 
-    # Quick check: does it contain "completions"?
-    [[ "$response" != *'"type":"completions"'* ]] && return
+    local -a lines
+    lines=("${(@f)1}")
 
-    # Extract items array content using zsh string manipulation
-    # We rely on the daemon's CompletionItem format:
-    #   {"display":"...","insert":"...","description":"...","kind":"...","match_indices":[...],"is_dangerous":false}
-    # Split on },{ to get individual items
-    local items_str="${response#*\"items\":[}"
-    items_str="${items_str%],\"selected\"*}"
+    # First line is the count
+    (( ${#lines[@]} < 1 )) && return
+    _TABRA_ITEM_COUNT=${lines[1]}
+    (( _TABRA_ITEM_COUNT == 0 )) && return
 
-    # Handle empty items
-    [[ -z "$items_str" || "$items_str" == "$response" ]] && return
-
-    local IFS=$'\x01'
-    # Replace },{ with our delimiter
-    items_str="${items_str//\}\,\{/$'\x01'}"
-
-    local item
-    for item in ${=items_str}; do
-        # Strip leading { and trailing }
-        item="${item#\{}"
-        item="${item%\}}"
-
-        # Extract display field
-        local display=""
-        if [[ "$item" =~ '"display":"([^"]*)"' ]]; then
-            display="${match[1]}"
-        fi
-
-        # Extract insert field
-        local insert=""
-        if [[ "$item" =~ '"insert":"([^"]*)"' ]]; then
-            insert="${match[1]}"
-        fi
-
-        # Extract description field
-        local desc=""
-        if [[ "$item" =~ '"description":"([^"]*)"' ]]; then
-            desc="${match[1]}"
-        fi
+    # Parse each subsequent line
+    local i
+    for (( i = 2; i <= ${#lines[@]} && i <= _TABRA_ITEM_COUNT + 1; i++ )); do
+        local line="${lines[$i]}"
+        # Split on tab
+        local display="${line%%	*}"
+        local rest="${line#*	}"
+        local insert="${rest%%	*}"
+        local desc="${rest#*	}"
+        # If no second tab, desc is same as insert (no description)
+        [[ "$desc" == "$insert" ]] && desc=""
 
         _TABRA_DISPLAYS+=("$display")
         _TABRA_INSERTS+=("$insert")
         _TABRA_DESCS+=("$desc")
-        (( _TABRA_ITEM_COUNT++ ))
     done
 }
 
@@ -127,11 +103,13 @@ _tabra_render_popup() {
     (( _TABRA_ITEM_COUNT == 0 )) && return
 
     _TABRA_POPUP_VISIBLE=1
-    _TABRA_POPUP_LINES=$_TABRA_ITEM_COUNT
+    # Show at most 10 items
+    local visible=$(( _TABRA_ITEM_COUNT < 10 ? _TABRA_ITEM_COUNT : 10 ))
+    _TABRA_POPUP_LINES=$visible
 
     printf '\n'
     local i
-    for (( i = 1; i <= _TABRA_ITEM_COUNT; i++ )); do
+    for (( i = 1; i <= visible; i++ )); do
         local display="${_TABRA_DISPLAYS[$i]}"
         local desc="${_TABRA_DESCS[$i]}"
 
@@ -149,24 +127,28 @@ _tabra_render_popup() {
             fi
         fi
     done
-    printf "\033[%dA" $(( _TABRA_ITEM_COUNT + 1 ))
+    printf "\033[%dA" $(( visible + 1 ))
 }
 
 # Fetch completions from daemon and render
 _tabra_fetch_and_render() {
     local response
-    response=$(tabra complete --buffer "$BUFFER" --cursor "$CURSOR" --cwd "$PWD" 2>/dev/null)
+    response=$(tabra complete-shell --buffer "$BUFFER" --cursor "$CURSOR" --cwd "$PWD" 2>/dev/null)
 
     if [[ -z "$response" ]]; then
         _tabra_erase_popup
-        _TABRA_CACHED_RESPONSE=""
         _TABRA_ITEM_COUNT=0
         return
     fi
 
-    _TABRA_CACHED_RESPONSE="$response"
     _TABRA_SELECTED=0
     _tabra_parse_response "$response"
+
+    if (( _TABRA_ITEM_COUNT == 0 )); then
+        _tabra_erase_popup
+        return
+    fi
+
     _tabra_render_popup
 }
 
@@ -175,15 +157,31 @@ _tabra_accept() {
     if (( _TABRA_POPUP_VISIBLE && _TABRA_ITEM_COUNT > 0 )); then
         local insert_text="${_TABRA_INSERTS[$(( _TABRA_SELECTED + 1 ))]}"
         if [[ -n "$insert_text" ]]; then
+            # Find the current token boundary using the same logic as the Rust tokenizer:
+            # walk backwards from cursor to find the start of the current token
             local before_cursor="${BUFFER:0:$CURSOR}"
             local after_cursor="${BUFFER:$CURSOR}"
+            local token_start=0
 
-            local token_start
-            if [[ "$before_cursor" =~ '.*[[:space:]]' ]]; then
-                token_start=${#MATCH}
-            else
-                token_start=0
-            fi
+            # Walk backwards through before_cursor to find token start
+            # A token starts after a space (outside quotes)
+            local -i pos=${#before_cursor}
+            local in_sq=0 in_dq=0
+            local ch
+            while (( pos > 0 )); do
+                (( pos-- ))
+                ch="${before_cursor:$pos:1}"
+                case "$ch" in
+                    "'") (( in_dq )) || (( in_sq = !in_sq )) ;;
+                    '"') (( in_sq )) || (( in_dq = !in_dq )) ;;
+                    ' '|$'\t')
+                        if (( !in_sq && !in_dq )); then
+                            token_start=$(( pos + 1 ))
+                            break
+                        fi
+                        ;;
+                esac
+            done
 
             BUFFER="${BUFFER:0:$token_start}${insert_text} ${after_cursor}"
             CURSOR=$(( token_start + ${#insert_text} + 1 ))

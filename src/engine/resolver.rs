@@ -66,7 +66,8 @@ pub fn resolve(spec: &Spec, ctx: &ParseContext, cwd: &str) -> Vec<ResolvedSugges
                             .unwrap_or_else(|| primary.to_string()),
                         description: sc.description.clone().unwrap_or_default(),
                         kind: SuggestionType::Subcommand,
-                        priority: sc.priority.unwrap_or(50),
+                        // Subcommands rank above options by default
+                        priority: sc.priority.unwrap_or(75),
                         is_dangerous: sc.is_dangerous,
                     });
                 }
@@ -240,7 +241,8 @@ fn push_option(opt: &Opt, suggestions: &mut Vec<ResolvedSuggestion>) {
             .unwrap_or_else(|| primary.to_string()),
         description: opt.description.clone().unwrap_or_default(),
         kind: SuggestionType::Option,
-        priority: opt.priority.unwrap_or(50),
+        // Options rank below subcommands by default
+        priority: opt.priority.unwrap_or(40),
         is_dangerous: opt.is_dangerous,
     });
 }
