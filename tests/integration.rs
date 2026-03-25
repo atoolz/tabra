@@ -325,3 +325,96 @@ fn test_generator_git_checkout_branches() {
     // Cleanup
     let _ = std::fs::remove_dir_all(&repo_dir);
 }
+
+#[test]
+fn test_init_zsh_output() {
+    let binary = env!("CARGO_BIN_EXE_tabra");
+    let output = Command::new(binary)
+        .args(["init", "zsh"])
+        .output()
+        .expect("failed to run tabra init zsh");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("_TABRA_LOADED"),
+        "zsh hook should contain guard variable"
+    );
+    assert!(
+        stdout.contains("_tabra_self_insert"),
+        "zsh hook should contain self-insert widget"
+    );
+    assert!(
+        stdout.contains("bindkey"),
+        "zsh hook should contain key bindings"
+    );
+    assert!(
+        stdout.contains("complete-shell"),
+        "zsh hook should call tabra complete-shell"
+    );
+}
+
+#[test]
+fn test_init_bash_output() {
+    let binary = env!("CARGO_BIN_EXE_tabra");
+    let output = Command::new(binary)
+        .args(["init", "bash"])
+        .output()
+        .expect("failed to run tabra init bash");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("_TABRA_LOADED"),
+        "bash hook should contain guard variable"
+    );
+    assert!(
+        stdout.contains("READLINE_LINE"),
+        "bash hook should use READLINE_LINE"
+    );
+    assert!(
+        stdout.contains("READLINE_POINT"),
+        "bash hook should use READLINE_POINT"
+    );
+    assert!(
+        stdout.contains("bind -x"),
+        "bash hook should use bind -x for key bindings"
+    );
+    assert!(
+        stdout.contains("BASH_VERSINFO"),
+        "bash hook should check bash version"
+    );
+    assert!(
+        stdout.contains("complete-shell"),
+        "bash hook should call tabra complete-shell"
+    );
+}
+
+#[test]
+fn test_init_fish_output() {
+    let binary = env!("CARGO_BIN_EXE_tabra");
+    let output = Command::new(binary)
+        .args(["init", "fish"])
+        .output()
+        .expect("failed to run tabra init fish");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("_TABRA_LOADED"),
+        "fish hook should contain guard variable"
+    );
+    assert!(
+        stdout.contains("commandline"),
+        "fish hook should use commandline builtin"
+    );
+    assert!(
+        stdout.contains("bind"),
+        "fish hook should contain key bindings"
+    );
+    assert!(
+        stdout.contains("complete-shell"),
+        "fish hook should call tabra complete-shell"
+    );
+    assert!(
+        stdout.contains("fish_exit"),
+        "fish hook should clean up on exit"
+    );
+}

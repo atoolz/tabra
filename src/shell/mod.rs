@@ -1,3 +1,5 @@
+pub mod bash_hook;
+pub mod fish_hook;
 pub mod hook;
 
 use clap::ValueEnum;
@@ -14,14 +16,8 @@ pub enum ShellType {
 pub fn print_hook(shell: ShellType) -> anyhow::Result<()> {
     let script = match shell {
         ShellType::Zsh => hook::zsh_hook(),
-        ShellType::Bash => {
-            eprintln!("bash support is not yet implemented (coming soon)");
-            return Ok(());
-        }
-        ShellType::Fish => {
-            eprintln!("fish support is not yet implemented (coming soon)");
-            return Ok(());
-        }
+        ShellType::Bash => bash_hook::bash_hook(),
+        ShellType::Fish => fish_hook::fish_hook(),
     };
     print!("{script}");
     Ok(())
