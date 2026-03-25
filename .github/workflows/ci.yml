@@ -58,15 +58,5 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install specs (if available)
-        run: |
-          if [ -d "specs" ] && [ "$(ls -A specs/*.json 2>/dev/null)" ]; then
-            cargo build
-            mkdir -p ~/.local/share/tabra/specs
-            cp specs/*.json ~/.local/share/tabra/specs/
-            echo "Installed $(ls specs/*.json | wc -l) specs"
-          else
-            echo "No specs directory yet, skipping spec install"
-          fi
       - name: Run integration tests
         run: cargo test --test integration -- --test-threads=1

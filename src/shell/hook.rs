@@ -157,31 +157,32 @@ _tabra_accept() {
     if (( _TABRA_POPUP_VISIBLE && _TABRA_ITEM_COUNT > 0 )); then
         local insert_text="${_TABRA_INSERTS[$(( _TABRA_SELECTED + 1 ))]}"
         if [[ -n "$insert_text" ]]; then
-            # Find the current token boundary using the same logic as the Rust tokenizer:
-            # walk backwards from cursor to find the start of the current token
+            # Find the current token boundary by forward-walking through before_cursor
+            # (forward walk handles quotes correctly, unlike backwards walk)
             local before_cursor="${BUFFER:0:$CURSOR}"
             local after_cursor="${BUFFER:$CURSOR}"
             local token_start=0
 
-            # Walk backwards through before_cursor to find token start
-            # A token starts after a space (outside quotes)
-            local -i pos=${#before_cursor}
-            local in_sq=0 in_dq=0
+            # Forward walk to find the start of the last token
+            local -i i=0 last_boundary=0
+            local in_sq=0 in_dq=0 escape_next=0
             local ch
-            while (( pos > 0 )); do
-                (( pos-- ))
-                ch="${before_cursor:$pos:1}"
-                case "$ch" in
-                    "'") (( in_dq )) || (( in_sq = !in_sq )) ;;
-                    '"') (( in_sq )) || (( in_dq = !in_dq )) ;;
-                    ' '|$'\t')
-                        if (( !in_sq && !in_dq )); then
-                            token_start=$(( pos + 1 ))
-                            break
-                        fi
-                        ;;
-                esac
+            while (( i < ${#before_cursor} )); do
+                ch="${before_cursor:$i:1}"
+                if (( escape_next )); then
+                    (( escape_next = 0 ))
+                elif [[ "$ch" == '\' ]] && (( !in_sq )); then
+                    (( escape_next = 1 ))
+                elif [[ "$ch" == "'" ]] && (( !in_dq )); then
+                    (( in_sq = !in_sq ))
+                elif [[ "$ch" == '"' ]] && (( !in_sq )); then
+                    (( in_dq = !in_dq ))
+                elif [[ "$ch" == ' ' || "$ch" == $'\t' ]] && (( !in_sq && !in_dq )); then
+                    last_boundary=$(( i + 1 ))
+                fi
+                (( i++ ))
             done
+            token_start=$last_boundary
 
             BUFFER="${BUFFER:0:$token_start}${insert_text} ${after_cursor}"
             CURSOR=$(( token_start + ${#insert_text} + 1 ))

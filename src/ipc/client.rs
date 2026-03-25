@@ -71,7 +71,7 @@ pub fn request_complete_shell(buffer: &str, cursor: usize, cwd: &str) -> Result<
             for item in &items {
                 // Tab-separated: display, insert text, description
                 // Replace tabs/newlines in fields to prevent breaking the format
-                let sanitize = |s: &str| s.replace(['\t', '\n'], " ");
+                let sanitize = |s: &str| s.replace(['\t', '\n', '\r'], " ");
                 let display = sanitize(&item.display);
                 let insert = sanitize(&item.insert);
                 let desc = sanitize(&item.description);

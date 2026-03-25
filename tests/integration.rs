@@ -7,7 +7,10 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+
+static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Helper to manage a daemon process for testing.
 struct TestDaemon {
@@ -19,7 +22,8 @@ struct TestDaemon {
 impl TestDaemon {
     /// Spawn a daemon with a temporary specs directory.
     fn spawn(specs: &[&str]) -> Self {
-        let tmp = std::env::temp_dir().join(format!("tabra-test-{}", std::process::id()));
+        let id = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp = std::env::temp_dir().join(format!("tabra-test-{}-{}", std::process::id(), id));
         let specs_dir = tmp.join("specs");
         let socket_path = tmp.join("tabra.sock");
 
