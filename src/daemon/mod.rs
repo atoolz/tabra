@@ -50,7 +50,10 @@ async fn async_run(specs_dir: PathBuf) -> Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
             // Check if existing socket is live by trying to connect
             if std::os::unix::net::UnixStream::connect(&socket_path).is_ok() {
-                anyhow::bail!("another tabra daemon is already running on {:?}", socket_path);
+                anyhow::bail!(
+                    "another tabra daemon is already running on {:?}",
+                    socket_path
+                );
             }
             // Socket is stale, remove and retry
             std::fs::remove_file(&socket_path).ok();
@@ -79,8 +82,8 @@ async fn async_run(specs_dir: PathBuf) -> Result<()> {
     // Capture the tokio runtime handle so we can spawn from notify's OS thread
     let watcher_handle = tokio::runtime::Handle::current();
     let watcher_index = Arc::clone(&spec_index);
-    let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-        match res {
+    let mut watcher =
+        notify::recommended_watcher(move |res: Result<Event, notify::Error>| match res {
             Ok(event) => {
                 let idx = watcher_index.clone();
                 let handle = watcher_handle.clone();
@@ -113,9 +116,8 @@ async fn async_run(specs_dir: PathBuf) -> Result<()> {
             Err(e) => {
                 error!("file watcher error: {e}");
             }
-        }
-    })
-    .context("creating file watcher")?;
+        })
+        .context("creating file watcher")?;
 
     watcher
         .watch(&specs_dir, RecursiveMode::NonRecursive)

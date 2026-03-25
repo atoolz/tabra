@@ -69,7 +69,12 @@ pub fn render_popup(
 
     // Draw top border
     write!(out, "\n\r").ok();
-    write_colored(&mut out, theme.border_fg, theme.popup_bg, &"─".repeat(popup_width));
+    write_colored(
+        &mut out,
+        theme.border_fg,
+        theme.popup_bg,
+        &"─".repeat(popup_width),
+    );
 
     // Draw each row
     for (i, item) in visible_items.iter().enumerate() {
@@ -108,8 +113,15 @@ pub fn render_popup(
 
         if !item.description.is_empty() && remaining > 5 {
             let desc = truncate(&item.description, remaining.saturating_sub(3));
-            let pad = remaining.saturating_sub(desc.chars().count()).saturating_sub(3);
-            write_colored(&mut out, theme.desc_fg, bg, &format!("{:>pad$} {desc} ", ""));
+            let pad = remaining
+                .saturating_sub(desc.chars().count())
+                .saturating_sub(3);
+            write_colored(
+                &mut out,
+                theme.desc_fg,
+                bg,
+                &format!("{:>pad$} {desc} ", ""),
+            );
         } else {
             // Fill remaining with background
             write_colored(&mut out, theme.text_fg, bg, &" ".repeat(remaining));

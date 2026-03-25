@@ -78,7 +78,11 @@ impl SpecIndex {
             }
         }
 
-        info!("loaded {} specs from {:?}", self.specs.len(), self.specs_dir);
+        info!(
+            "loaded {} specs from {:?}",
+            self.specs.len(),
+            self.specs_dir
+        );
         Ok(())
     }
 
@@ -111,10 +115,9 @@ impl SpecIndex {
 
     /// Parse a single JSON spec file. Returns (tool_name, Spec).
     fn load_spec_file(&self, path: &Path) -> Result<(String, Spec)> {
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("reading {:?}", path))?;
-        let spec: Spec = serde_json::from_str(&content)
-            .with_context(|| format!("parsing {:?}", path))?;
+        let content = fs::read_to_string(path).with_context(|| format!("reading {:?}", path))?;
+        let spec: Spec =
+            serde_json::from_str(&content).with_context(|| format!("parsing {:?}", path))?;
 
         // Use the file stem as the tool name (e.g. "git.json" -> "git")
         let name = path
@@ -139,19 +142,16 @@ pub fn default_specs_dir() -> PathBuf {
 /// Tabra specs directory.
 pub fn install_specs(from: &Path) -> Result<()> {
     let target = default_specs_dir();
-    fs::create_dir_all(&target)
-        .with_context(|| format!("creating specs dir: {:?}", target))?;
+    fs::create_dir_all(&target).with_context(|| format!("creating specs dir: {:?}", target))?;
 
-    let entries = fs::read_dir(from)
-        .with_context(|| format!("reading source dir: {:?}", from))?;
+    let entries = fs::read_dir(from).with_context(|| format!("reading source dir: {:?}", from))?;
 
     let mut count = 0;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("json") {
             let dest = target.join(entry.file_name());
-            fs::copy(&path, &dest)
-                .with_context(|| format!("copying {:?} -> {:?}", path, dest))?;
+            fs::copy(&path, &dest).with_context(|| format!("copying {:?} -> {:?}", path, dest))?;
             count += 1;
         }
     }
