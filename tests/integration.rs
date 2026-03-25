@@ -266,3 +266,62 @@ fn test_multiple_specs_loaded() {
     let kubectl_resp = daemon.complete("kubectl ", 8, "/tmp");
     assert_eq!(kubectl_resp["type"], "completions");
 }
+
+#[test]
+fn test_generator_git_checkout_branches() {
+    // Create a real git repo with known branches
+    let id = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let repo_dir =
+        std::env::temp_dir().join(format!("tabra-git-test-{}-{}", std::process::id(), id));
+    std::fs::create_dir_all(&repo_dir).unwrap();
+
+    // Init repo and create branches
+    let run = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .current_dir(&repo_dir)
+            .env("GIT_AUTHOR_NAME", "test")
+            .env("GIT_AUTHOR_EMAIL", "test@test.com")
+            .env("GIT_COMMITTER_NAME", "test")
+            .env("GIT_COMMITTER_EMAIL", "test@test.com")
+            .output()
+            .unwrap()
+    };
+
+    run(&["init", "-b", "main"]);
+    run(&["commit", "--allow-empty", "-m", "init"]);
+    run(&["branch", "feature-foo"]);
+    run(&["branch", "feature-bar"]);
+
+    // Spawn daemon with git spec
+    let daemon = TestDaemon::spawn(&["git"]);
+    let repo_path = repo_dir.to_str().unwrap();
+
+    // Request completions for "git checkout " in the repo directory
+    let resp = daemon.complete("git checkout ", 13, repo_path);
+    assert_eq!(resp["type"], "completions");
+
+    let items = resp["items"].as_array().expect("items should be an array");
+    let displays: Vec<&str> = items
+        .iter()
+        .filter_map(|item| item["display"].as_str())
+        .collect();
+
+    // Branch names should appear via generator script
+    assert!(
+        displays.iter().any(|d| d.contains("main")),
+        "should include 'main' branch, got: {:?}",
+        &displays[..displays.len().min(15)]
+    );
+    assert!(
+        displays.iter().any(|d| d.contains("feature-foo")),
+        "should include 'feature-foo' branch"
+    );
+    assert!(
+        displays.iter().any(|d| d.contains("feature-bar")),
+        "should include 'feature-bar' branch"
+    );
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&repo_dir);
+}

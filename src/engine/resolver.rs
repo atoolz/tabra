@@ -4,6 +4,8 @@
 //! The resolver handles:
 //! - Collecting subcommands, options, and arg suggestions for the current position
 //! - Expanding templates (filepaths, folders) into real filesystem suggestions
+//! - Executing generator scripts for dynamic suggestions
+//! - Caching generator results with TTL for latency target
 //! - Collecting persistent options from parent subcommands
 //! - Deduplicating already-used options
 
@@ -11,7 +13,28 @@ use crate::engine::parser::{ExpectedCompletion, ParseContext};
 use crate::spec::types::{
     Arg, Opt, SingleOrArray, Spec, Subcommand, Suggestion, SuggestionType, TemplateString,
 };
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{LazyLock, Mutex};
+use std::time::Instant;
+
+/// Generator result cache. Key = (script_hash, cwd). TTL = 30 seconds.
+static GENERATOR_CACHE: LazyLock<Mutex<HashMap<(u64, String), CachedResult>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+const CACHE_TTL_SECS: u64 = 30;
+
+struct CachedResult {
+    lines: Vec<String>,
+    created_at: Instant,
+}
+
+fn cache_key(script: &serde_json::Value, cwd: &str) -> (u64, String) {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    script.to_string().hash(&mut hasher);
+    (hasher.finish(), cwd.to_string())
+}
 
 /// A resolved suggestion ready for matching and display.
 #[derive(Debug, Clone)]
@@ -289,7 +312,149 @@ fn collect_arg_suggestions(
                     expand_template(t, cwd, partial_token, suggestions);
                 }
             }
-            // TODO: execute generator scripts for dynamic suggestions
+            // Execute generator scripts for dynamic suggestions
+            if let Some(script_val) = &gen.script {
+                execute_generator(
+                    script_val,
+                    &gen.split_on,
+                    gen.script_timeout,
+                    cwd,
+                    suggestions,
+                );
+            }
+        }
+    }
+}
+
+/// Execute a generator script and add results to suggestions.
+///
+/// Supports two script formats:
+/// - Array: ["git", "branch"] -> Command::new(&args[0]).args(&args[1..])
+/// - String: "git branch" -> Command::new("sh").arg("-c").arg(script_str)
+/// - Function (__tabra_function): skipped (requires JS runtime)
+fn execute_generator(
+    script: &serde_json::Value,
+    split_on: &Option<String>,
+    timeout_ms: Option<u64>,
+    cwd: &str,
+    suggestions: &mut Vec<ResolvedSuggestion>,
+) {
+    // Skip non-executable scripts (JS functions marked by compiler)
+    match script {
+        serde_json::Value::Array(_) | serde_json::Value::String(_) => {}
+        _ => return,
+    }
+
+    let delimiter = split_on.as_deref().unwrap_or("\n");
+    let key = cache_key(script, cwd);
+
+    // Check cache first
+    if let Ok(cache) = GENERATOR_CACHE.lock() {
+        if let Some(cached) = cache.get(&key) {
+            if cached.created_at.elapsed().as_secs() < CACHE_TTL_SECS {
+                for line in &cached.lines {
+                    suggestions.push(ResolvedSuggestion {
+                        match_text: line.clone(),
+                        display_text: line.clone(),
+                        insert_text: line.clone(),
+                        description: String::new(),
+                        kind: SuggestionType::Special,
+                        priority: 50,
+                        is_dangerous: false,
+                    });
+                }
+                return;
+            }
+        }
+    }
+
+    // Cache miss or expired: execute the script
+    let timeout = std::time::Duration::from_millis(timeout_ms.unwrap_or(5000));
+
+    let output = match script {
+        serde_json::Value::Array(args) => {
+            let str_args: Vec<&str> = args.iter().filter_map(|a| a.as_str()).collect();
+            if str_args.is_empty() {
+                return;
+            }
+            run_command(str_args[0], &str_args[1..], cwd, timeout)
+        }
+        serde_json::Value::String(cmd) => run_command("sh", &["-c", cmd.as_str()], cwd, timeout),
+        _ => return,
+    };
+
+    let output = match output {
+        Some(o) => o,
+        None => return,
+    };
+
+    // Parse output lines
+    let lines: Vec<String> = output
+        .split(delimiter)
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    // Store in cache
+    if let Ok(mut cache) = GENERATOR_CACHE.lock() {
+        cache.insert(
+            key,
+            CachedResult {
+                lines: lines.clone(),
+                created_at: Instant::now(),
+            },
+        );
+    }
+
+    // Add to suggestions
+    for line in &lines {
+        suggestions.push(ResolvedSuggestion {
+            match_text: line.clone(),
+            display_text: line.clone(),
+            insert_text: line.clone(),
+            description: String::new(),
+            kind: SuggestionType::Special,
+            priority: 50,
+            is_dangerous: false,
+        });
+    }
+}
+
+/// Run a command with timeout. Returns stdout as String, or None on error/timeout.
+fn run_command(
+    program: &str,
+    args: &[&str],
+    cwd: &str,
+    timeout: std::time::Duration,
+) -> Option<String> {
+    use std::process::Command;
+
+    let child = Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
+    let child = match child {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+
+    // Wait with timeout using a thread
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let result = child.wait_with_output();
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(output)) if output.status.success() => String::from_utf8(output.stdout).ok(),
+        _ => {
+            // Timeout or error: the child process may still be running in the
+            // spawned thread. We detach the thread and let it clean up.
+            drop(handle);
+            None
         }
     }
 }
