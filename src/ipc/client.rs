@@ -43,11 +43,12 @@ fn send_request(request: &Request) -> Result<Response> {
 
 /// Request completions and print the response JSON to stdout.
 /// Used by programmatic clients and tests.
-pub fn request_complete(buffer: &str, cursor: usize, cwd: &str) -> Result<()> {
+pub fn request_complete(buffer: &str, cursor: usize, cwd: &str, cols: Option<u16>) -> Result<()> {
     let request = Request::Complete {
         buffer: buffer.to_string(),
         cursor,
         cwd: cwd.to_string(),
+        terminal_cols: cols,
     };
     let response = send_request(&request)?;
     println!("{}", serde_json::to_string(&response)?);
@@ -57,29 +58,41 @@ pub fn request_complete(buffer: &str, cursor: usize, cwd: &str) -> Result<()> {
 /// Request completions and print shell-friendly output to stdout.
 /// Format: one line per item, tab-separated: display\tinsert\tdescription
 /// First line is the item count. Empty output = no completions.
+/// If `render` is true, appends a blank line then the pre-rendered ANSI popup.
 /// Used by shell hooks (no JSON parsing needed in zsh/bash/fish).
-pub fn request_complete_shell(buffer: &str, cursor: usize, cwd: &str) -> Result<()> {
+pub fn request_complete_shell(
+    buffer: &str,
+    cursor: usize,
+    cwd: &str,
+    cols: Option<u16>,
+    render: bool,
+) -> Result<()> {
     let request = Request::Complete {
         buffer: buffer.to_string(),
         cursor,
         cwd: cwd.to_string(),
+        terminal_cols: cols,
     };
     let response = send_request(&request)?;
-    match response {
-        Response::Completions { items, .. } => {
-            println!("{}", items.len());
-            for item in &items {
-                // Tab-separated: display, insert text, description
-                // Replace tabs/newlines in fields to prevent breaking the format
-                let sanitize = |s: &str| s.replace(['\t', '\n', '\r'], " ");
-                let display = sanitize(&item.display);
-                let insert = sanitize(&item.insert);
-                let desc = sanitize(&item.description);
-                println!("{display}\t{insert}\t{desc}");
-            }
+    if let Response::Completions {
+        items,
+        rendered_popup,
+        ..
+    } = response
+    {
+        println!("{}", items.len());
+        for item in &items {
+            let sanitize = |s: &str| s.replace(['\t', '\n', '\r'], " ");
+            let display = sanitize(&item.display);
+            let insert = sanitize(&item.insert);
+            let desc = sanitize(&item.description);
+            println!("{display}\t{insert}\t{desc}");
         }
-        _ => {
-            // No completions: print nothing (empty output)
+        if render {
+            if let Some(popup) = rendered_popup {
+                println!();
+                print!("{popup}");
+            }
         }
     }
     Ok(())

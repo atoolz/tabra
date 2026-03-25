@@ -44,6 +44,9 @@ pub enum Request {
         cursor: usize,
         /// Current working directory.
         cwd: String,
+        /// Terminal width in columns (from $COLUMNS). Used to constrain popup width.
+        #[serde(default)]
+        terminal_cols: Option<u16>,
     },
 
     /// User accepted a suggestion from the popup.
@@ -77,6 +80,10 @@ pub enum Response {
         selected: usize,
         /// The partial token these suggestions are filtering on.
         query: String,
+        /// Pre-rendered ANSI popup string (ready to print in the terminal).
+        /// The shell hook can print this directly instead of rendering itself.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rendered_popup: Option<String>,
     },
 
     /// No completions available (hide popup if visible).

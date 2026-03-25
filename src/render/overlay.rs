@@ -36,10 +36,16 @@ pub fn render_popup(
     selected: usize,
     _query: &str,
     theme: &Theme,
+    terminal_cols: Option<u16>,
 ) -> Option<String> {
     if items.is_empty() {
         return None;
     }
+
+    // Use terminal width to constrain popup, or fall back to MAX_POPUP_WIDTH
+    let max_width = terminal_cols
+        .map(|c| (c as usize).saturating_sub(2).min(MAX_POPUP_WIDTH))
+        .unwrap_or(MAX_POPUP_WIDTH);
 
     let visible_count = items.len().min(MAX_VISIBLE_ITEMS);
     let visible_items = &items[..visible_count];
@@ -60,7 +66,7 @@ pub fn render_popup(
         .max()
         .unwrap_or(MIN_POPUP_WIDTH);
 
-    let popup_width = content_width.clamp(MIN_POPUP_WIDTH, MAX_POPUP_WIDTH);
+    let popup_width = content_width.clamp(MIN_POPUP_WIDTH, max_width);
 
     let mut out = String::with_capacity(1024);
 

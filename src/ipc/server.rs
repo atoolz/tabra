@@ -5,6 +5,7 @@
 
 use crate::engine::{matcher, parser, resolver};
 use crate::ipc::protocol::{CompletionItem, Request, Response};
+use crate::render::{overlay, theme::Theme};
 use crate::spec::loader::SpecIndex;
 use anyhow::{Context as _, Result};
 use std::sync::Arc;
@@ -78,9 +79,10 @@ async fn handle_connection(
             buffer,
             cursor,
             cwd,
+            terminal_cols,
         } => {
             let index = spec_index.read().await;
-            handle_complete(&index, &buffer, cursor, &cwd)
+            handle_complete(&index, &buffer, cursor, &cwd, terminal_cols)
         }
 
         Request::Accept { text: _ } => {
@@ -114,7 +116,13 @@ async fn handle_connection(
     Ok(())
 }
 
-fn handle_complete(index: &SpecIndex, buffer: &str, cursor: usize, cwd: &str) -> Response {
+fn handle_complete(
+    index: &SpecIndex,
+    buffer: &str,
+    cursor: usize,
+    cwd: &str,
+    terminal_cols: Option<u16>,
+) -> Response {
     // Extract the command name (first token)
     let (tokens, _partial) = parser::tokenize(buffer, cursor);
     let cmd_name = match tokens.first() {
@@ -158,9 +166,15 @@ fn handle_complete(index: &SpecIndex, buffer: &str, cursor: usize, cwd: &str) ->
         })
         .collect();
 
+    // Generate pre-rendered ANSI popup
+    let theme = Theme::default();
+    let rendered_popup =
+        overlay::render_popup(&items, 0, &ctx.current_token, &theme, terminal_cols);
+
     Response::Completions {
         items,
         selected: 0,
         query: ctx.current_token,
+        rendered_popup,
     }
 }
