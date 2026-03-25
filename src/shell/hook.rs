@@ -86,9 +86,11 @@ _tabra_parse_response() {
         local display="${line%%	*}"
         local rest="${line#*	}"
         local insert="${rest%%	*}"
-        local desc="${rest#*	}"
-        # If no second tab, desc is same as insert (no description)
-        [[ "$desc" == "$insert" ]] && desc=""
+        local desc=""
+        # Only extract description if rest contains a second tab
+        if [[ "$rest" == *$'\t'* ]]; then
+            desc="${rest#*	}"
+        fi
 
         _TABRA_DISPLAYS+=("$display")
         _TABRA_INSERTS+=("$insert")
