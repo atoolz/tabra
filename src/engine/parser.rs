@@ -16,6 +16,8 @@ use crate::spec::types::{Arg, FilterStrategy, SingleOrArray, Spec};
 pub struct ParseContext {
     /// The chain of subcommands from root to current position.
     /// e.g. for "git remote add", this would be ["git", "remote", "add"].
+    /// Used for debugging and future status display.
+    #[allow(dead_code)]
     pub subcommand_path: Vec<String>,
 
     /// Reference path into the spec tree (indices into subcommands arrays).

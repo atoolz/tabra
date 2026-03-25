@@ -1,13 +1,12 @@
-// Spec types and loader define the full withfig schema. Many fields and methods
-// are not yet consumed but will be as generators, bash/fish hooks, and other
-// features are added. Suppress dead_code warnings for now.
-#![allow(dead_code)]
-
 mod daemon;
 mod engine;
 mod ipc;
+// Renderer is fully implemented but not wired into IPC yet (M3).
+#[allow(dead_code)]
 mod render;
 mod shell;
+// Spec types define the full withfig schema; many fields are not yet consumed.
+#[allow(dead_code)]
 mod spec;
 
 use clap::{Parser, Subcommand};
