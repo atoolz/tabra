@@ -48,10 +48,15 @@ enum Commands {
         /// Current working directory
         #[arg(long)]
         cwd: String,
+
+        /// Terminal width in columns
+        #[arg(long)]
+        cols: Option<u16>,
     },
 
     /// Send a completion request, return shell-friendly output (for shell hooks)
     /// Format: first line = count, then one line per item: display\tinsert\tdescription
+    /// If --render is passed, last line is the pre-rendered ANSI popup.
     CompleteShell {
         /// The full command line buffer
         #[arg(long)]
@@ -64,6 +69,14 @@ enum Commands {
         /// Current working directory
         #[arg(long)]
         cwd: String,
+
+        /// Terminal width in columns
+        #[arg(long)]
+        cols: Option<u16>,
+
+        /// Include pre-rendered ANSI popup in output (last section after blank line)
+        #[arg(long)]
+        render: bool,
     },
 
     /// Accept a suggestion (insert it, called by shell hook)
@@ -114,12 +127,15 @@ fn main() -> anyhow::Result<()> {
             buffer,
             cursor,
             cwd,
-        } => ipc::client::request_complete(&buffer, cursor, &cwd),
+            cols,
+        } => ipc::client::request_complete(&buffer, cursor, &cwd, cols),
         Commands::CompleteShell {
             buffer,
             cursor,
             cwd,
-        } => ipc::client::request_complete_shell(&buffer, cursor, &cwd),
+            cols,
+            render,
+        } => ipc::client::request_complete_shell(&buffer, cursor, &cwd, cols, render),
         Commands::Accept { text } => ipc::client::request_accept(&text),
         Commands::Dismiss => ipc::client::request_dismiss(),
         Commands::Status => ipc::client::request_status(),

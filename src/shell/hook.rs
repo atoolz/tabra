@@ -105,10 +105,17 @@ _tabra_render_popup() {
     (( _TABRA_ITEM_COUNT == 0 )) && return
 
     _TABRA_POPUP_VISIBLE=1
-    # Show at most 10 items
     local visible=$(( _TABRA_ITEM_COUNT < 10 ? _TABRA_ITEM_COUNT : 10 ))
     _TABRA_POPUP_LINES=$visible
 
+    # Use pre-rendered ANSI popup from daemon if available and selection is 0
+    # (daemon always renders with selected=0; on navigation we fall back to basic rendering)
+    if [[ -n "$_TABRA_RENDERED_POPUP" ]] && (( _TABRA_SELECTED == 0 )); then
+        printf '%s' "$_TABRA_RENDERED_POPUP"
+        return
+    fi
+
+    # Fallback: basic rendering for navigation (up/down changes selection)
     printf '\n'
     local i
     for (( i = 1; i <= visible; i++ )); do
@@ -132,19 +139,32 @@ _tabra_render_popup() {
     printf "\033[%dA" $(( visible + 1 ))
 }
 
+# State for pre-rendered popup from daemon
+typeset -g _TABRA_RENDERED_POPUP=""
+
 # Fetch completions from daemon and render
 _tabra_fetch_and_render() {
     local response
-    response=$(tabra complete-shell --buffer "$BUFFER" --cursor "$CURSOR" --cwd "$PWD" 2>/dev/null)
+    response=$(tabra complete-shell --buffer "$BUFFER" --cursor "$CURSOR" --cwd "$PWD" --cols "$COLUMNS" --render 2>/dev/null)
 
     if [[ -z "$response" ]]; then
         _tabra_erase_popup
         _TABRA_ITEM_COUNT=0
+        _TABRA_RENDERED_POPUP=""
         return
     fi
 
     _TABRA_SELECTED=0
-    _tabra_parse_response "$response"
+
+    # Split response: items section (before blank line) and rendered popup (after blank line)
+    local items_section="${response%%$'\n\n'*}"
+    if [[ "$response" == *$'\n\n'* ]]; then
+        _TABRA_RENDERED_POPUP="${response#*$'\n\n'}"
+    else
+        _TABRA_RENDERED_POPUP=""
+    fi
+
+    _tabra_parse_response "$items_section"
 
     if (( _TABRA_ITEM_COUNT == 0 )); then
         _tabra_erase_popup
