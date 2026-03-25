@@ -179,7 +179,14 @@ pub fn validate_specs(from: &Path) -> Result<()> {
             .unwrap_or("unknown")
             .to_string();
 
-        let content = fs::read_to_string(&path).with_context(|| format!("reading {:?}", path))?;
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("  FAIL {name}: read error: {e}");
+                failures.push((name, format!("read error: {e}")));
+                continue;
+            }
+        };
 
         match serde_json::from_str::<crate::spec::types::Spec>(&content) {
             Ok(spec) => {
@@ -216,10 +223,9 @@ mod tests {
     fn test_load_bundled_specs() {
         let specs_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("specs");
         if !specs_dir.exists() {
-            eprintln!(
-                "specs/ directory not found, skipping (run `node scripts/compile-specs.mjs` first)"
+            panic!(
+                "specs/ directory not found. Run `make specs` or `node scripts/compile-specs.mjs` first."
             );
-            return;
         }
 
         let entries: Vec<_> = fs::read_dir(&specs_dir)
