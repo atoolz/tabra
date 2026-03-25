@@ -35,8 +35,24 @@ enum Commands {
         shell: shell::ShellType,
     },
 
-    /// Send a completion request (called by the shell hook, not by humans)
+    /// Send a completion request, return JSON response (for programmatic clients)
     Complete {
+        /// The full command line buffer
+        #[arg(long)]
+        buffer: String,
+
+        /// Cursor position (character index, not byte offset) within the buffer
+        #[arg(long)]
+        cursor: usize,
+
+        /// Current working directory
+        #[arg(long)]
+        cwd: String,
+    },
+
+    /// Send a completion request, return shell-friendly output (for shell hooks)
+    /// Format: first line = count, then one line per item: display\tinsert\tdescription
+    CompleteShell {
         /// The full command line buffer
         #[arg(long)]
         buffer: String,
@@ -99,6 +115,11 @@ fn main() -> anyhow::Result<()> {
             cursor,
             cwd,
         } => ipc::client::request_complete(&buffer, cursor, &cwd),
+        Commands::CompleteShell {
+            buffer,
+            cursor,
+            cwd,
+        } => ipc::client::request_complete_shell(&buffer, cursor, &cwd),
         Commands::Accept { text } => ipc::client::request_accept(&text),
         Commands::Dismiss => ipc::client::request_dismiss(),
         Commands::Status => ipc::client::request_status(),
