@@ -15,12 +15,24 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
 /// In-memory index of all loaded specs, keyed by tool name.
+#[derive(Default)]
 pub struct SpecIndex {
     specs: HashMap<String, Spec>,
     specs_dir: PathBuf,
 }
 
 impl SpecIndex {
+    /// Create an empty index (for testing/benchmarking).
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert a spec into the index.
+    pub fn insert(&mut self, name: String, spec: Spec) {
+        self.specs.insert(name, spec);
+    }
+
     /// Create a new index and load all specs from the directory.
     pub fn load(specs_dir: PathBuf) -> Result<Self> {
         let mut index = Self {

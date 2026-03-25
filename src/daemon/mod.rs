@@ -7,13 +7,13 @@
 //! 4. Handles completion requests by parsing, resolving, and matching
 //! 5. Responds with ranked completion items
 
-use crate::ipc::{protocol, server};
-use crate::spec::loader::{self, SpecIndex};
 use anyhow::{Context, Result};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
+use tabra::ipc::{protocol, server};
+use tabra::spec::loader::{self, SpecIndex};
 use tokio::net::UnixListener;
 use tokio::sync::{watch, RwLock};
 use tracing::{error, info, warn};

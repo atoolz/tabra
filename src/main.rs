@@ -1,13 +1,8 @@
 mod daemon;
-mod engine;
-mod ipc;
-// Renderer is fully implemented but not wired into IPC yet (M3).
-#[allow(dead_code)]
-mod render;
-mod shell;
-// Spec types define the full withfig schema; many fields are not yet consumed.
-#[allow(dead_code)]
-mod spec;
+
+use tabra::ipc;
+use tabra::shell;
+use tabra::spec;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
