@@ -159,3 +159,100 @@ pub fn install_specs(from: &Path) -> Result<()> {
     info!("installed {count} specs to {:?}", target);
     Ok(())
 }
+
+/// Validate a directory of JSON specs by deserializing each one.
+/// Reports which specs pass and which fail with error details.
+pub fn validate_specs(from: &Path) -> Result<()> {
+    let entries = fs::read_dir(from).with_context(|| format!("reading specs dir: {:?}", from))?;
+
+    let mut ok = 0;
+    let mut failures: Vec<(String, String)> = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let content = fs::read_to_string(&path).with_context(|| format!("reading {:?}", path))?;
+
+        match serde_json::from_str::<crate::spec::types::Spec>(&content) {
+            Ok(spec) => {
+                let subcmd_count = spec.subcommands.as_ref().map_or(0, |s| s.len());
+                let opt_count = spec.options.as_ref().map_or(0, |o| o.len());
+                info!("  OK  {name} ({subcmd_count} subcommands, {opt_count} options)");
+                ok += 1;
+            }
+            Err(e) => {
+                warn!("  FAIL {name}: {e}");
+                failures.push((name, e.to_string()));
+            }
+        }
+    }
+
+    info!("{ok} specs valid, {} failed", failures.len());
+
+    if !failures.is_empty() {
+        for (name, err) in &failures {
+            eprintln!("  {name}: {err}");
+        }
+        anyhow::bail!("{} specs failed validation", failures.len());
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_load_bundled_specs() {
+        let specs_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("specs");
+        if !specs_dir.exists() {
+            eprintln!(
+                "specs/ directory not found, skipping (run `node scripts/compile-specs.mjs` first)"
+            );
+            return;
+        }
+
+        let entries: Vec<_> = fs::read_dir(&specs_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("json"))
+            .collect();
+
+        assert!(!entries.is_empty(), "No JSON specs found in specs/");
+
+        let mut ok = 0;
+        let mut failures = Vec::new();
+
+        for entry in &entries {
+            let path = entry.path();
+            let name = path.file_stem().unwrap().to_str().unwrap().to_string();
+            let content = fs::read_to_string(&path).unwrap();
+
+            match serde_json::from_str::<crate::spec::types::Spec>(&content) {
+                Ok(_) => ok += 1,
+                Err(e) => failures.push(format!("{name}: {e}")),
+            }
+        }
+
+        if !failures.is_empty() {
+            panic!(
+                "{} of {} specs failed to deserialize:\n{}",
+                failures.len(),
+                entries.len(),
+                failures.join("\n")
+            );
+        }
+
+        eprintln!("{ok}/{} specs loaded successfully", entries.len());
+    }
+}

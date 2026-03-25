@@ -1,0 +1,115 @@
+{
+  "name": "node",
+  "description": "Run the node interpreter",
+  "args": {
+    "name": "node script",
+    "isScript": true,
+    "generators": {
+      "trigger": {
+        "__tabra_function": true,
+        "path": ".args.generators.trigger"
+      },
+      "getQueryTerm": {
+        "__tabra_function": true,
+        "path": ".args.generators.getQueryTerm"
+      },
+      "custom": {
+        "__tabra_function": true,
+        "path": ".args.generators.custom"
+      }
+    }
+  },
+  "options": [
+    {
+      "name": [
+        "-e",
+        "--eval=..."
+      ],
+      "insertValue": "-e '{cursor}'",
+      "description": "Evaluate script",
+      "args": {}
+    },
+    {
+      "name": "--watch",
+      "description": "Watch input files"
+    },
+    {
+      "name": "--watch-path",
+      "description": "Specify a watch directory or file",
+      "args": {
+        "name": "path",
+        "template": "filepaths"
+      },
+      "isRepeatable": true
+    },
+    {
+      "name": "--watch-preserve-output",
+      "description": "Disable the clearing of the console when watch mode restarts the process",
+      "dependsOn": [
+        "--watch",
+        "--watch-path"
+      ]
+    },
+    {
+      "name": "--env-file",
+      "description": "Specify a file containing environment variables",
+      "args": {
+        "name": "path",
+        "template": "filepaths"
+      },
+      "isRepeatable": true
+    },
+    {
+      "name": [
+        "-p",
+        "--print"
+      ],
+      "description": "Evaluate script and print result"
+    },
+    {
+      "name": [
+        "-c",
+        "--check"
+      ],
+      "description": "Syntax check script without executing"
+    },
+    {
+      "name": [
+        "-v",
+        "--version"
+      ],
+      "description": "Print Node.js version"
+    },
+    {
+      "name": [
+        "-i",
+        "--interactive"
+      ],
+      "description": "Always enter the REPL even if stdin does not appear to be a terminal"
+    },
+    {
+      "name": [
+        "-h",
+        "--help"
+      ],
+      "description": "Print node command line options (currently set)"
+    },
+    {
+      "name": "--inspect",
+      "requiresSeparator": true,
+      "args": {
+        "name": "[host:]port",
+        "isOptional": true
+      },
+      "description": "Activate inspector on host:port (default: 127.0.0.1:9229)"
+    },
+    {
+      "name": "--preserve-symlinks",
+      "description": "Follows symlinks to directories when examining source code and templates for translation strings"
+    }
+  ],
+  "generateSpec": {
+    "__tabra_function": true,
+    "path": ".generateSpec"
+  }
+}
