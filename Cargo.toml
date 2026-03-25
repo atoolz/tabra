@@ -1,0 +1,48 @@
+[package]
+name = "tabra"
+version = "0.1.0"
+edition = "2021"
+description = "IDE-style terminal autocomplete. Tab. Complete. Ship."
+license = "Apache-2.0"
+repository = "https://github.com/atoolz/tabra"
+keywords = ["autocomplete", "terminal", "cli", "completions", "shell"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+# Terminal manipulation, raw mode, cursor control, ANSI rendering
+crossterm = "0.28"
+
+# Fuzzy matching (same engine as Helix editor)
+nucleo = "0.5"
+
+# JSON parsing for withfig/autocomplete specs
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async runtime for daemon IPC (Unix socket server)
+tokio = { version = "1", features = ["full"] }
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Directory paths (XDG spec dirs for config/data/cache)
+dirs = "6"
+
+# libc for getuid
+libc = "0.2"
+
+# File watching for spec hot-reload
+notify = "7"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
