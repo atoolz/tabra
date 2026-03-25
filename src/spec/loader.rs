@@ -21,6 +21,19 @@ pub struct SpecIndex {
 }
 
 impl SpecIndex {
+    /// Create an empty index (for testing/benchmarking).
+    pub fn new() -> Self {
+        Self {
+            specs: HashMap::new(),
+            specs_dir: PathBuf::new(),
+        }
+    }
+
+    /// Insert a spec into the index.
+    pub fn insert(&mut self, name: String, spec: Spec) {
+        self.specs.insert(name, spec);
+    }
+
     /// Create a new index and load all specs from the directory.
     pub fn load(specs_dir: PathBuf) -> Result<Self> {
         let mut index = Self {

@@ -42,6 +42,13 @@ libc = "0.2"
 # File watching for spec hot-reload
 notify = "7"
 
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "completion"
+harness = false
+
 [profile.release]
 lto = true
 codegen-units = 1
