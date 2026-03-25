@@ -70,10 +70,11 @@ pub fn request_complete_shell(buffer: &str, cursor: usize, cwd: &str) -> Result<
             println!("{}", items.len());
             for item in &items {
                 // Tab-separated: display, insert text, description
-                // Replace any tabs/newlines in fields to prevent breaking the format
-                let display = item.display.replace('\t', " ").replace('\n', " ");
-                let insert = item.insert.replace('\t', " ").replace('\n', " ");
-                let desc = item.description.replace('\t', " ").replace('\n', " ");
+                // Replace tabs/newlines in fields to prevent breaking the format
+                let sanitize = |s: &str| s.replace(['\t', '\n'], " ");
+                let display = sanitize(&item.display);
+                let insert = sanitize(&item.insert);
+                let desc = sanitize(&item.description);
                 println!("{display}\t{insert}\t{desc}");
             }
         }
