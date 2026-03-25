@@ -74,29 +74,26 @@ pub fn request_complete_shell(
         terminal_cols: cols,
     };
     let response = send_request(&request)?;
-    match response {
-        Response::Completions {
-            items,
-            rendered_popup,
-            ..
-        } => {
-            println!("{}", items.len());
-            for item in &items {
-                let sanitize = |s: &str| s.replace(['\t', '\n', '\r'], " ");
-                let display = sanitize(&item.display);
-                let insert = sanitize(&item.insert);
-                let desc = sanitize(&item.description);
-                println!("{display}\t{insert}\t{desc}");
-            }
-            // If render mode, append the pre-rendered ANSI popup after a blank line
-            if render {
-                if let Some(popup) = rendered_popup {
-                    println!();
-                    print!("{popup}");
-                }
+    if let Response::Completions {
+        items,
+        rendered_popup,
+        ..
+    } = response
+    {
+        println!("{}", items.len());
+        for item in &items {
+            let sanitize = |s: &str| s.replace(['\t', '\n', '\r'], " ");
+            let display = sanitize(&item.display);
+            let insert = sanitize(&item.insert);
+            let desc = sanitize(&item.description);
+            println!("{display}\t{insert}\t{desc}");
+        }
+        if render {
+            if let Some(popup) = rendered_popup {
+                println!();
+                print!("{popup}");
             }
         }
-        _ => {}
     }
     Ok(())
 }
