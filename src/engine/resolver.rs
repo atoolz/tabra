@@ -310,7 +310,7 @@ fn expand_template(
         } else {
             Path::new(cwd).join(dir)
         };
-        let file_prefix = token_path
+        let _file_prefix = token_path
             .file_name()
             .and_then(|f| f.to_str())
             .unwrap_or("");
