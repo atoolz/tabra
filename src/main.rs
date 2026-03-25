@@ -72,6 +72,13 @@ enum Commands {
         #[arg(long)]
         from: PathBuf,
     },
+
+    /// Validate compiled JSON specs against the Tabra type system
+    ValidateSpecs {
+        /// Path to a directory of JSON specs to validate
+        #[arg(long)]
+        from: PathBuf,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -97,5 +104,6 @@ fn main() -> anyhow::Result<()> {
         Commands::Status => ipc::client::request_status(),
         Commands::Stop => ipc::client::request_stop(),
         Commands::InstallSpecs { from } => spec::loader::install_specs(&from),
+        Commands::ValidateSpecs { from } => spec::loader::validate_specs(&from),
     }
 }
