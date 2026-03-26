@@ -12,6 +12,7 @@
 //!           tabra daemon (via Unix socket IPC)
 //! ```
 
+pub mod buffer_tracker;
 pub mod event_loop;
 pub mod integration;
 pub mod keys;

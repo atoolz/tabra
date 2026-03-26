@@ -8,6 +8,7 @@
 //! The event loop owns the real terminal output and writes popup ANSI
 //! directly to it, separate from the PTY output stream.
 
+use super::buffer_tracker::BufferTracker;
 use super::keys::{self, KeyEvent};
 use super::osc::{OscEvent, OscParser};
 use super::popup::{PopupAction, PopupState};
@@ -102,10 +103,18 @@ pub async fn run(
         debug!("PTY writer task exited");
     });
 
+    // Debounce channel: buffer updates are debounced (30ms) before triggering popup.
+    let (debounce_tx, mut debounce_rx) = mpsc::channel::<(String, usize)>(16);
+
+    // Buffer tracker: tracks what the user types locally (no shell integration needed)
+    let tracker = std::sync::Arc::new(tokio::sync::Mutex::new(BufferTracker::new()));
+
     // Task 1: Read raw stdin and route key events
     let stdin_popup = popup.clone();
     let stdin_write_tx = write_tx.clone();
     let stdin_pty_tx = pty_write_tx.clone();
+    let stdin_tracker = tracker.clone();
+    let stdin_debounce_tx = debounce_tx.clone();
     let stdin_task = tokio::spawn(async move {
         use tokio::io::AsyncReadExt;
         let mut stdin = tokio::io::stdin();
@@ -129,8 +138,15 @@ pub async fn run(
                         let (events, pending) = keys::parse_bytes(&[], true);
                         escape_pending = pending;
                         for event in events {
-                            handle_key_event(event, &stdin_popup, &stdin_write_tx, &stdin_pty_tx)
-                                .await;
+                            handle_key_event(
+                                event,
+                                &stdin_popup,
+                                &stdin_write_tx,
+                                &stdin_pty_tx,
+                                &stdin_tracker,
+                                &stdin_debounce_tx,
+                            )
+                            .await;
                         }
                         continue;
                     }
@@ -147,16 +163,21 @@ pub async fn run(
             escape_pending = pending;
 
             for event in events {
-                handle_key_event(event, &stdin_popup, &stdin_write_tx, &stdin_pty_tx).await;
+                handle_key_event(
+                    event,
+                    &stdin_popup,
+                    &stdin_write_tx,
+                    &stdin_pty_tx,
+                    &stdin_tracker,
+                    &stdin_debounce_tx,
+                )
+                .await;
             }
         }
         debug!("stdin reader exited");
     });
 
-    // Debounce channel: CommandLine OSC events are buffered and only the latest
-    // is processed after 30ms of no new events. This prevents re-rendering the
-    // popup on every keystroke during fast typing.
-    let (debounce_tx, mut debounce_rx) = mpsc::channel::<(String, usize)>(16);
+    // Debounce task: waits 30ms after last buffer update before triggering popup
     let debounce_popup = popup.clone();
     let debounce_write_tx = write_tx.clone();
     let debounce_task = tokio::spawn(async move {
@@ -215,6 +236,7 @@ pub async fn run(
     // Task 2: Process PTY output from read thread, strip OSC, forward to terminal
     let pty_popup = popup.clone();
     let pty_terminal_tx = write_tx.clone();
+    let tracker_for_osc = tracker.clone();
     let pty_task = tokio::spawn(async move {
         let mut osc_parser = OscParser::new();
 
@@ -230,8 +252,10 @@ pub async fn run(
             for event in events {
                 match event {
                     OscEvent::CommandLine { buffer, cursor } => {
-                        // Debounce: send to channel, process after 30ms of quiet
-                        let _ = debounce_tx.send((buffer, cursor)).await;
+                        // Sync local buffer tracker with shell's actual state
+                        // (corrects any desync from untracked editing operations)
+                        let mut t = tracker_for_osc.lock().await;
+                        t.sync(buffer, cursor);
                     }
                     OscEvent::PromptStart => {
                         let mut popup = pty_popup.lock().await;
@@ -373,6 +397,8 @@ async fn handle_key_event(
     popup: &std::sync::Arc<tokio::sync::Mutex<PopupState>>,
     write_tx: &mpsc::Sender<TerminalWrite>,
     pty_tx: &mpsc::Sender<Vec<u8>>,
+    tracker: &std::sync::Arc<tokio::sync::Mutex<BufferTracker>>,
+    debounce_tx: &mpsc::Sender<(String, usize)>,
 ) {
     // ArrowRight with ghost text: accept ghost text by typing it into the shell
     if event == KeyEvent::ArrowRight {
@@ -416,11 +442,11 @@ async fn handle_key_event(
     match action {
         PopupAction::ForwardKey(bytes) => {
             let _ = pty_tx.send(bytes).await;
-            // Inject Ctrl-X Ctrl-R to trigger the OSC report from bash.
-            // This is bound in the integration script to __tabra_report_cmdline.
-            // It fires AFTER readline processes the character, so the report
-            // contains the updated READLINE_LINE with the new character.
-            let _ = pty_tx.send(vec![0x18, 0x12]).await; // \C-x \C-r
+            // Update local buffer tracker and trigger debounced completion
+            let mut t = tracker.lock().await;
+            if t.on_key(&event) {
+                let _ = debounce_tx.send((t.buffer.clone(), t.cursor)).await;
+            }
         }
         PopupAction::Show(ansi) => {
             let _ = write_tx.send(TerminalWrite::ShowPopup(ansi)).await;
