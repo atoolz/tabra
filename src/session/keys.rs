@@ -205,7 +205,7 @@ pub fn parse_bytes(buf: &[u8], escape_pending: bool) -> (Vec<KeyEvent>, bool) {
                 events.push(KeyEvent::Backspace);
                 i += 1;
             }
-            b if b >= 0x20 && b < 0x7f => {
+            b if (0x20..0x7f).contains(&b) => {
                 events.push(KeyEvent::Char(b as char));
                 i += 1;
             }
