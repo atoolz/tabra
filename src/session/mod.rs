@@ -39,11 +39,11 @@ pub fn run(shell: Option<ShellType>) -> Result<()> {
 
     // Demonstrate raw mode with scopeguard restoration.
     // The event loop (Phase 5) will use this pattern for real.
+    // Pattern: enable raw mode, wrap in guard, guard restores on drop (including panic).
     let original_termios = pty::enable_raw_mode()?;
-    let _raw_guard = scopeguard::guard(original_termios.clone(), |t| pty::restore_mode(&t));
-    // Immediately restore (this is just a compilation/safety test for now)
+    let _raw_guard = scopeguard::guard(original_termios, |t| pty::restore_mode(&t));
+    // Guard fires on drop, restoring terminal. No explicit restore needed.
     drop(_raw_guard);
-    pty::restore_mode(&original_termios);
 
     eprintln!("tabra session: PTY wrapper mode is under development.");
     eprintln!("For now, use: eval \"$(tabra init bash)\"");
