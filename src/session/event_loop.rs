@@ -201,35 +201,8 @@ pub async fn run(
             }
             let mut p = debounce_popup.lock().await;
 
-            // Clear previous ghost text
-            if p.ghost_len > 0 {
-                let _ = debounce_write_tx
-                    .send(TerminalWrite::ClearGhost(p.ghost_len))
-                    .await;
-                p.ghost_len = 0;
-            }
-
             let action = p.on_command_line(buffer.clone(), cursor, &cwd).await;
             dispatch_popup_action(action, &debounce_write_tx).await;
-
-            // Show ghost text: the remaining part of the first suggestion
-            if !p.items.is_empty() {
-                let first_insert = p.items[0].insert.clone();
-                let token_start = p.find_token_start();
-                let end = cursor.min(buffer.len());
-                if token_start <= end {
-                    let current_token = &buffer[token_start..end];
-                    if first_insert.starts_with(current_token)
-                        && first_insert.len() > current_token.len()
-                    {
-                        let ghost = &first_insert[current_token.len()..];
-                        p.ghost_len = ghost.len();
-                        let _ = debounce_write_tx
-                            .send(TerminalWrite::GhostText(ghost.to_string()))
-                            .await;
-                    }
-                }
-            }
         }
     });
 
@@ -405,44 +378,8 @@ async fn handle_key_event(
     tracker: &std::sync::Arc<tokio::sync::Mutex<BufferTracker>>,
     debounce_tx: &mpsc::Sender<(String, usize)>,
 ) {
-    // ArrowRight with ghost text: accept ghost text by typing it into the shell
-    if event == KeyEvent::ArrowRight {
-        let mut p = popup.lock().await;
-        if p.ghost_len > 0 && !p.items.is_empty() {
-            let first_insert = p.items[0].insert.clone();
-            let current_token_start = p.find_token_start();
-            let current_token =
-                &p.last_buffer[current_token_start..p.last_cursor.min(p.last_buffer.len())];
-            if let Some(remaining) = first_insert.strip_prefix(current_token) {
-                // Clear ghost text
-                let _ = write_tx.send(TerminalWrite::ClearGhost(p.ghost_len)).await;
-                p.ghost_len = 0;
-                // Type the remaining text into the shell
-                let mut inject = remaining.as_bytes().to_vec();
-                inject.push(b' '); // add space after completion
-                let _ = pty_tx.send(inject).await;
-                // Hide popup
-                if p.visible {
-                    let lines = p.popup_lines;
-                    p.visible = false;
-                    p.items.clear();
-                    p.popup_lines = 0;
-                    let _ = write_tx.send(TerminalWrite::ErasePopup(lines)).await;
-                }
-                return;
-            }
-        }
-        drop(p);
-    }
-
-    // Clear ghost text on any keystroke (it'll be re-rendered after debounce)
-    {
-        let mut p = popup.lock().await;
-        if p.ghost_len > 0 {
-            let _ = write_tx.send(TerminalWrite::ClearGhost(p.ghost_len)).await;
-            p.ghost_len = 0;
-        }
-    }
+    // Ghost text is disabled for now (cursor column positioning needs work).
+    // TODO: re-enable ghost text once cursor column tracking is implemented.
     let action = popup.lock().await.on_key(&event);
     match action {
         PopupAction::ForwardKey(bytes) => {

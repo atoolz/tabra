@@ -28,21 +28,24 @@ fn test_render_popup_uses_relative_cursor_movement() {
 
     let rendered = overlay::render_popup(&items, 0, "", &theme, Some(80)).unwrap();
 
-    // Must NOT contain save/restore cursor (breaks with scroll)
+    // Must NOT contain SCO save/restore cursor (breaks with scroll)
     assert!(
         !rendered.contains("\x1b[s"),
-        "render_popup should NOT use save cursor (\\x1b[s)"
+        "render_popup should NOT use SCO save cursor (\\x1b[s)"
     );
     assert!(
         !rendered.contains("\x1b[u"),
-        "render_popup should NOT use restore cursor (\\x1b[u)"
+        "render_popup should NOT use SCO restore cursor (\\x1b[u)"
     );
 
-    // Must contain cursor-up to return to prompt (3 items + 2 borders = 5 lines)
+    // Must contain DEC save (\x1b7) and DEC restore (\x1b8)
     assert!(
-        rendered.contains("\x1b[5A"),
-        "render_popup should end with \\x1b[5A\\r (cursor up 5 lines), got: {:?}",
-        &rendered[rendered.len().saturating_sub(30)..]
+        rendered.contains("\x1b7"),
+        "render_popup should contain DEC save (\\x1b7)"
+    );
+    assert!(
+        rendered.contains("\x1b8"),
+        "render_popup should contain DEC restore (\\x1b8)"
     );
 
     // Must contain hide/show cursor
@@ -162,21 +165,9 @@ fn test_render_popup_empty_returns_none() {
 fn test_erase_popup_uses_relative_movement() {
     let erase = overlay::erase_popup(5);
 
-    // Must NOT contain save/restore
-    assert!(
-        !erase.contains("\x1b[s"),
-        "erase should NOT use save cursor"
-    );
-    assert!(
-        !erase.contains("\x1b[u"),
-        "erase should NOT use restore cursor"
-    );
-
-    // Must contain cursor-up (5 items + 2 borders = 7 lines)
-    assert!(
-        erase.contains("\x1b[7A"),
-        "erase should contain \\x1b[7A\\r (cursor up 7)"
-    );
+    // Must contain DEC save/restore
+    assert!(erase.contains("\x1b7"), "erase should use DEC save");
+    assert!(erase.contains("\x1b8"), "erase should use DEC restore");
 
     // Must contain \n\r\x1b[2K for each line
     let clear_count = erase.matches("\x1b[2K").count();
@@ -190,17 +181,19 @@ fn test_render_popup_cursor_up_count_varies_with_items() {
     // 1 item: 1 + 2 borders = 3 lines
     let items1 = make_items(&["add"]);
     let r1 = overlay::render_popup(&items1, 0, "", &theme, Some(80)).unwrap();
-    assert!(r1.contains("\x1b[3A"), "1 item: should cursor up 3");
+    // All should use DEC save/restore regardless of item count
+    assert!(r1.contains("\x1b7"), "1 item: should DEC save");
+    assert!(r1.contains("\x1b8"), "1 item: should DEC restore");
 
-    // 5 items: 5 + 2 borders = 7 lines
     let items5 = make_items(&["add", "commit", "push", "pull", "fetch"]);
     let r5 = overlay::render_popup(&items5, 0, "", &theme, Some(80)).unwrap();
-    assert!(r5.contains("\x1b[7A"), "5 items: should cursor up 7");
+    assert!(r5.contains("\x1b7"), "5 items: should DEC save");
+    assert!(r5.contains("\x1b8"), "5 items: should DEC restore");
 
-    // 10 items: 10 + 2 borders = 12 lines
     let items10 = make_items(&["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]);
     let r10 = overlay::render_popup(&items10, 0, "", &theme, Some(80)).unwrap();
-    assert!(r10.contains("\x1b[12A"), "10 items: should cursor up 12");
+    assert!(r10.contains("\x1b7"), "10 items: should DEC save");
+    assert!(r10.contains("\x1b8"), "10 items: should DEC restore");
 }
 
 #[test]
@@ -219,10 +212,10 @@ fn test_render_popup_inplace_clears_extra_lines() {
         "should clear at least 7 lines (3 new + 4 extra), got {clear_count}"
     );
 
-    // Should cursor up the full distance (7 lines)
+    // Should use DEC restore
     assert!(
-        rendered.contains("\x1b[7A"),
-        "should cursor up 7 (3 new content + 4 cleared)"
+        rendered.contains("\x1b8"),
+        "should use DEC restore after clearing extra lines"
     );
 }
 

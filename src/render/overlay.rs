@@ -48,7 +48,7 @@ pub fn render_popup(
         .unwrap_or(MAX_POPUP_WIDTH);
 
     let visible_count = items.len().min(MAX_VISIBLE_ITEMS);
-    let _total_popup_lines = visible_count + 2; // items + top border + bottom border
+    // total popup lines = visible_count + 2 borders (used by inplace/erase externally)
     let visible_items = &items[..visible_count];
 
     // Calculate popup width based on content
@@ -70,10 +70,10 @@ pub fn render_popup(
     let popup_width = content_width.clamp(MIN_POPUP_WIDTH, max_width);
 
     let mut out = String::with_capacity(1024);
-    let total_lines = visible_count + 2; // items + top border + bottom border
+    // visible_count + 2 borders = total popup lines (used by erase_popup externally)
 
-    // Hide cursor during render
-    write!(out, "\x1b[?25l").ok();
+    // Hide cursor + DEC save cursor position (more reliable than SCO \x1b[s with scroll)
+    write!(out, "\x1b[?25l\x1b7").ok();
 
     // Move to next line and draw top border
     write!(out, "\n\r\x1b[2K").ok();
@@ -153,12 +153,11 @@ pub fn render_popup(
     // Reset colors
     write!(out, "\x1b[0m").ok();
 
-    // Move cursor back up to the original prompt position using relative movement.
-    // This is reliable regardless of terminal scroll state (unlike save/restore).
-    write!(out, "\x1b[{}A", total_lines).ok();
-
-    // Show cursor
-    write!(out, "\x1b[?25h").ok();
+    // DEC restore cursor position + show cursor.
+    // \x1b8 restores the position saved by \x1b7. DEC save/restore is more
+    // reliable than SCO (\x1b[s/\x1b[u) because it handles scroll offset
+    // correctly on modern terminals (ghostty, alacritty, kitty, wezterm).
+    write!(out, "\x1b8\x1b[?25h").ok();
 
     Some(out)
 }
@@ -167,12 +166,11 @@ pub fn render_popup(
 pub fn erase_popup(num_lines: usize) -> String {
     let total = num_lines + 2; // items + borders
     let mut out = String::new();
-    write!(out, "\x1b[?25l").ok(); // hide cursor
+    write!(out, "\x1b[?25l\x1b7").ok(); // hide cursor + DEC save
     for _ in 0..total {
-        write!(out, "\n\r\x1b[2K").ok(); // move down, clear line
+        write!(out, "\n\r\x1b[2K").ok();
     }
-    write!(out, "\x1b[{}A", total).ok(); // move back up
-    write!(out, "\x1b[?25h").ok(); // show cursor
+    write!(out, "\x1b8\x1b[?25h").ok(); // DEC restore + show cursor
     out
 }
 
@@ -207,7 +205,7 @@ pub fn render_popup_inplace(
     // New popup is smaller: need to clear extra lines.
     // Strip the trailing cursor-up + show-cursor from content,
     // add extra clear lines, then do cursor-up for the full height.
-    let suffix = format!("\x1b[{}A\x1b[?25h", new_total);
+    let suffix = "\x1b8\x1b[?25h".to_string();
     let inner = content.strip_suffix(&suffix).unwrap_or(&content);
 
     let mut out = String::with_capacity(content.len() + 128);
@@ -220,7 +218,7 @@ pub fn render_popup_inplace(
     }
 
     // Move back up the full distance (new content + cleared lines)
-    write!(out, "\x1b[{}A\x1b[?25h", new_total + extra).ok();
+    write!(out, "\x1b8\x1b[?25h").ok();
 
     Some(out)
 }
