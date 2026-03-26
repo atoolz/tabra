@@ -12,8 +12,10 @@
 //!           tabra daemon (via Unix socket IPC)
 //! ```
 
+pub mod integration;
 pub mod keys;
 pub mod osc;
+pub mod popup;
 pub mod pty;
 
 use anyhow::Result;
