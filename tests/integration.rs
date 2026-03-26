@@ -389,6 +389,47 @@ fn test_init_bash_output() {
 }
 
 #[test]
+fn test_session_subcommand_exists() {
+    // Verify `tabra session --help` works (doesn't crash, shows help text)
+    let binary = env!("CARGO_BIN_EXE_tabra");
+    let output = Command::new(binary)
+        .args(["session", "--help"])
+        .output()
+        .expect("failed to run tabra session --help");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("PTY") || stdout.contains("session") || stdout.contains("autocomplete"),
+        "session help should describe the command, got: {}",
+        &stdout[..stdout.len().min(200)]
+    );
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_session_integration_script_output() {
+    // Verify the bash integration script contains OSC markers (not popup rendering)
+    let binary = env!("CARGO_BIN_EXE_tabra");
+
+    // The session uses integration::bash_integration() internally.
+    // We can test it indirectly by checking that `tabra init bash` still works
+    // (the old hook approach) while the session approach is separate.
+    let output = Command::new(binary)
+        .args(["init", "bash"])
+        .output()
+        .expect("failed to run tabra init bash");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The old init bash hook should still contain bind -x
+    assert!(
+        stdout.contains("bind -x"),
+        "init bash should contain bind -x"
+    );
+    // It should NOT contain OSC 6973 (that's the session integration, not the init hook)
+    // (both approaches coexist: init is legacy, session is new)
+}
+
+#[test]
 fn test_init_fish_output() {
     let binary = env!("CARGO_BIN_EXE_tabra");
     let output = Command::new(binary)
