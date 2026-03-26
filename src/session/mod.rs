@@ -37,6 +37,14 @@ pub fn run(shell: Option<ShellType>) -> Result<()> {
     pty_pair.set_window_size(rows, cols)?;
     tracing::info!("PTY opened, terminal size: {}x{}", cols, rows);
 
+    // Demonstrate raw mode with scopeguard restoration.
+    // The event loop (Phase 5) will use this pattern for real.
+    let original_termios = pty::enable_raw_mode()?;
+    let _raw_guard = scopeguard::guard(original_termios.clone(), |t| pty::restore_mode(&t));
+    // Immediately restore (this is just a compilation/safety test for now)
+    drop(_raw_guard);
+    pty::restore_mode(&original_termios);
+
     eprintln!("tabra session: PTY wrapper mode is under development.");
     eprintln!("For now, use: eval \"$(tabra init bash)\"");
 

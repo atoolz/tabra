@@ -104,7 +104,7 @@ pub fn parse_bytes(buf: &[u8], escape_pending: bool) -> (Vec<KeyEvent>, bool) {
                         // Consume until we hit a letter (the final byte of CSI)
                         while i < buf.len() {
                             raw.push(buf[i]);
-                            if buf[i].is_ascii_alphabetic() || buf[i] == b'~' {
+                            if buf[i] >= 0x40 && buf[i] <= 0x7e {
                                 i += 1;
                                 break;
                             }
@@ -155,7 +155,7 @@ pub fn parse_bytes(buf: &[u8], escape_pending: bool) -> (Vec<KeyEvent>, bool) {
                                 let mut raw = vec![0x1b, b'['];
                                 while i < buf.len() {
                                     raw.push(buf[i]);
-                                    if buf[i].is_ascii_alphabetic() || buf[i] == b'~' {
+                                    if buf[i] >= 0x40 && buf[i] <= 0x7e {
                                         i += 1;
                                         break;
                                     }

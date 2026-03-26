@@ -8,7 +8,8 @@ use anyhow::{Context, Result};
 use nix::libc;
 use nix::pty::openpty;
 use nix::sys::termios;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use nix::unistd::dup;
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::process::{Child, Command, Stdio};
 
 /// A PTY pair: master fd for the session, slave fd for the child shell.
@@ -45,42 +46,40 @@ impl PtyPair {
 
     /// Spawn a child shell process attached to the slave side of the PTY.
     ///
-    /// The `init_script` is passed via `--rcfile` (bash) so the shell sources
-    /// the Tabra integration script on startup.
-    pub fn spawn_shell(&self, shell: &str, init_script_path: &str) -> Result<Child> {
-        let slave_fd = self.slave.as_raw_fd();
+    /// Consumes self, returning the master fd and child process.
+    /// The slave fd is dup'd for stdin/stdout/stderr and then closed in the parent,
+    /// so that read() on master returns EOF when the child exits.
+    pub fn spawn_shell(self, shell: &str, init_script_path: &str) -> Result<(OwnedFd, Child)> {
+        // Dup the slave fd for stdout and stderr (stdin takes the original)
+        let slave_raw = self.slave.into_raw_fd();
+        let stdout_fd = dup(slave_raw).context("dup slave for stdout")?;
+        let stderr_fd = dup(slave_raw).context("dup slave for stderr")?;
 
-        // Build shell command with integration script
         let mut cmd = Command::new(shell);
 
         match shell {
             s if s.ends_with("bash") => {
                 cmd.arg("--rcfile").arg(init_script_path);
             }
-            s if s.ends_with("zsh") => {
-                cmd.env("ZDOTDIR", "/dev/null"); // skip default zshrc
-                cmd.arg("--rcs")
-                    .arg("-c")
-                    .arg(format!("source {} && exec zsh -i", init_script_path));
-            }
             s if s.ends_with("fish") => {
                 cmd.arg("-C").arg(format!("source {}", init_script_path));
             }
             _ => {
-                // Unknown shell: just spawn it, no integration
+                // zsh and unknown shells: just spawn, integration via env
             }
         }
 
-        // Attach child to the slave side of the PTY
-        // SAFETY: slave_fd is a valid open fd from openpty
+        // SAFETY: each fd is a distinct open descriptor from openpty/dup.
+        // slave_raw is consumed by stdin, stdout_fd by stdout, stderr_fd by stderr.
+        // After spawn, the parent has no remaining references to the slave side.
         unsafe {
-            cmd.stdin(Stdio::from_raw_fd(slave_fd));
-            cmd.stdout(Stdio::from_raw_fd(slave_fd));
-            cmd.stderr(Stdio::from_raw_fd(slave_fd));
+            cmd.stdin(Stdio::from_raw_fd(slave_raw));
+            cmd.stdout(Stdio::from_raw_fd(stdout_fd.into_raw_fd()));
+            cmd.stderr(Stdio::from_raw_fd(stderr_fd.into_raw_fd()));
         }
 
         let child = cmd.spawn().context("failed to spawn shell")?;
-        Ok(child)
+        Ok((self.master, child))
     }
 }
 
