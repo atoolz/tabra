@@ -40,7 +40,7 @@ fn test_render_popup_uses_relative_cursor_movement() {
 
     // Must contain cursor-up to return to prompt (3 items + 2 borders = 5 lines)
     assert!(
-        rendered.contains("\x1b[5A\r"),
+        rendered.contains("\x1b[5A"),
         "render_popup should end with \\x1b[5A\\r (cursor up 5 lines), got: {:?}",
         &rendered[rendered.len().saturating_sub(30)..]
     );
@@ -174,7 +174,7 @@ fn test_erase_popup_uses_relative_movement() {
 
     // Must contain cursor-up (5 items + 2 borders = 7 lines)
     assert!(
-        erase.contains("\x1b[7A\r"),
+        erase.contains("\x1b[7A"),
         "erase should contain \\x1b[7A\\r (cursor up 7)"
     );
 
@@ -190,17 +190,17 @@ fn test_render_popup_cursor_up_count_varies_with_items() {
     // 1 item: 1 + 2 borders = 3 lines
     let items1 = make_items(&["add"]);
     let r1 = overlay::render_popup(&items1, 0, "", &theme, Some(80)).unwrap();
-    assert!(r1.contains("\x1b[3A\r"), "1 item: should cursor up 3");
+    assert!(r1.contains("\x1b[3A"), "1 item: should cursor up 3");
 
     // 5 items: 5 + 2 borders = 7 lines
     let items5 = make_items(&["add", "commit", "push", "pull", "fetch"]);
     let r5 = overlay::render_popup(&items5, 0, "", &theme, Some(80)).unwrap();
-    assert!(r5.contains("\x1b[7A\r"), "5 items: should cursor up 7");
+    assert!(r5.contains("\x1b[7A"), "5 items: should cursor up 7");
 
     // 10 items: 10 + 2 borders = 12 lines
     let items10 = make_items(&["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]);
     let r10 = overlay::render_popup(&items10, 0, "", &theme, Some(80)).unwrap();
-    assert!(r10.contains("\x1b[12A\r"), "10 items: should cursor up 12");
+    assert!(r10.contains("\x1b[12A"), "10 items: should cursor up 12");
 }
 
 #[test]
@@ -221,7 +221,7 @@ fn test_render_popup_inplace_clears_extra_lines() {
 
     // Should cursor up the full distance (7 lines)
     assert!(
-        rendered.contains("\x1b[7A\r"),
+        rendered.contains("\x1b[7A"),
         "should cursor up 7 (3 new content + 4 cleared)"
     );
 }

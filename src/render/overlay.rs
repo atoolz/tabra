@@ -155,7 +155,7 @@ pub fn render_popup(
 
     // Move cursor back up to the original prompt position using relative movement.
     // This is reliable regardless of terminal scroll state (unlike save/restore).
-    write!(out, "\x1b[{}A\r", total_lines).ok();
+    write!(out, "\x1b[{}A", total_lines).ok();
 
     // Show cursor
     write!(out, "\x1b[?25h").ok();
@@ -171,7 +171,7 @@ pub fn erase_popup(num_lines: usize) -> String {
     for _ in 0..total {
         write!(out, "\n\r\x1b[2K").ok(); // move down, clear line
     }
-    write!(out, "\x1b[{}A\r", total).ok(); // move back up
+    write!(out, "\x1b[{}A", total).ok(); // move back up
     write!(out, "\x1b[?25h").ok(); // show cursor
     out
 }
@@ -207,7 +207,7 @@ pub fn render_popup_inplace(
     // New popup is smaller: need to clear extra lines.
     // Strip the trailing cursor-up + show-cursor from content,
     // add extra clear lines, then do cursor-up for the full height.
-    let suffix = format!("\x1b[{}A\r\x1b[?25h", new_total);
+    let suffix = format!("\x1b[{}A\x1b[?25h", new_total);
     let inner = content.strip_suffix(&suffix).unwrap_or(&content);
 
     let mut out = String::with_capacity(content.len() + 128);
@@ -220,7 +220,7 @@ pub fn render_popup_inplace(
     }
 
     // Move back up the full distance (new content + cleared lines)
-    write!(out, "\x1b[{}A\r\x1b[?25h", new_total + extra).ok();
+    write!(out, "\x1b[{}A\x1b[?25h", new_total + extra).ok();
 
     Some(out)
 }
