@@ -88,8 +88,7 @@ impl PopupState {
 
                 // Use daemon's pre-rendered popup if available
                 if let Some(popup) = rendered_popup {
-                    let lines = popup.matches('\n').count().max(1);
-                    self.popup_lines = lines;
+                    self.popup_lines = self.items.len().min(10);
                     PopupAction::Show(popup)
                 } else {
                     self.render_current()
@@ -181,8 +180,7 @@ impl PopupState {
             &self.theme,
             Some(self.terminal_cols),
         ) {
-            let lines = rendered.matches('\n').count().max(1);
-            self.popup_lines = lines;
+            self.popup_lines = self.items.len().min(10);
             PopupAction::Show(rendered)
         } else {
             self.hide()

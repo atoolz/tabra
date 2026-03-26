@@ -122,7 +122,12 @@ pub fn fish_integration() -> String {
 # Emits OSC markers via key bindings
 
 function __tabra_report
-    set -l b64 (printf '%s' (commandline --current-buffer) | base64 2>/dev/null)
+    set -l buf (commandline --current-buffer)
+    set -l b64 (printf '%s' "$buf" | base64 2>/dev/null)
+    # NOTE: commandline --cursor returns codepoint offset, not byte offset.
+    # For ASCII-only input (99% of CLI commands) these are identical.
+    # Multi-byte characters before the cursor will cause a mismatch.
+    # TODO: convert codepoint offset to byte offset for full UTF-8 support.
     set -l cursor (commandline --cursor)
     printf '\033]6973;CL;%s;%d\007' "$b64" "$cursor"
 end
