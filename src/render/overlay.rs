@@ -70,12 +70,13 @@ pub fn render_popup(
     let popup_width = content_width.clamp(MIN_POPUP_WIDTH, max_width);
 
     let mut out = String::with_capacity(1024);
+    let total_lines = visible_count + 2; // items + top border + bottom border
 
-    // Hide cursor during render to prevent flicker
+    // Hide cursor during render
     write!(out, "\x1b[?25l").ok();
 
-    // Draw top border (clear line first for clean overwrite)
-    write!(out, "\x1b[E\x1b[2K").ok();
+    // Move to next line and draw top border
+    write!(out, "\n\r\x1b[2K").ok();
     write_colored(
         &mut out,
         theme.border_fg,
@@ -83,7 +84,7 @@ pub fn render_popup(
         &"─".repeat(popup_width),
     );
 
-    // Draw each row
+    // Draw each item row
     for (i, item) in visible_items.iter().enumerate() {
         let is_selected = i == selected;
         let bg = if is_selected {
@@ -92,7 +93,7 @@ pub fn render_popup(
             theme.popup_bg
         };
 
-        write!(out, "\x1b[E\x1b[2K").ok();
+        write!(out, "\n\r\x1b[2K").ok();
 
         // Icon
         let icon = kind_icon_ascii(item.kind);
@@ -103,7 +104,7 @@ pub fn render_popup(
         };
         write_colored(&mut out, icon_color, bg, &format!("{icon} "));
 
-        // Name with match highlighting (clamp indices to truncated display length)
+        // Name with match highlighting
         let name_display = truncate(&item.display, popup_width.saturating_sub(4));
         let display_char_count = name_display.chars().count() as u32;
         let clamped_indices: Vec<u32> = item
@@ -114,7 +115,7 @@ pub fn render_popup(
             .collect();
         write_name_highlighted(&mut out, &name_display, &clamped_indices, theme, bg);
 
-        // Padding between name and description (use char count for column alignment)
+        // Description
         let used = 2 + name_display.chars().count();
         let remaining = popup_width.saturating_sub(used);
 
@@ -130,13 +131,12 @@ pub fn render_popup(
                 &format!("{:>pad$} {desc} ", ""),
             );
         } else {
-            // Fill remaining with background
             write_colored(&mut out, theme.text_fg, bg, &" ".repeat(remaining));
         }
     }
 
     // Draw bottom border with item count
-    write!(out, "\x1b[E\x1b[2K").ok();
+    write!(out, "\n\r\x1b[2K").ok();
     let count_str = if items.len() > MAX_VISIBLE_ITEMS {
         format!(" {}/{} ", visible_count, items.len())
     } else {
@@ -153,20 +153,26 @@ pub fn render_popup(
     // Reset colors
     write!(out, "\x1b[0m").ok();
 
-    // Restore cursor position and show cursor
-    write!(out, "\x1b[u\x1b[?25h").ok();
+    // Move cursor back up to the original prompt position using relative movement.
+    // This is reliable regardless of terminal scroll state (unlike save/restore).
+    write!(out, "\x1b[{}A\r", total_lines).ok();
+
+    // Show cursor
+    write!(out, "\x1b[?25h").ok();
 
     Some(out)
 }
 
 /// Erase the popup area (used when dismissing).
 pub fn erase_popup(num_lines: usize) -> String {
+    let total = num_lines + 2; // items + borders
     let mut out = String::new();
-    write!(out, "\x1b[?25l\x1b[s").ok(); // hide cursor + save position
-    for _ in 0..num_lines + 2 {
-        write!(out, "\x1b[E\x1b[2K").ok();
+    write!(out, "\x1b[?25l").ok(); // hide cursor
+    for _ in 0..total {
+        write!(out, "\n\r\x1b[2K").ok(); // move down, clear line
     }
-    write!(out, "\x1b[u\x1b[?25h").ok(); // restore position + show cursor
+    write!(out, "\x1b[{}A\r", total).ok(); // move back up
+    write!(out, "\x1b[?25h").ok(); // show cursor
     out
 }
 
@@ -181,43 +187,40 @@ pub fn render_popup_inplace(
     terminal_cols: Option<u16>,
     prev_lines: usize,
 ) -> Option<String> {
-    // Render the new popup content
-    let content = render_popup(items, selected, query, theme, terminal_cols)?;
-
-    let new_lines = items.len().min(MAX_VISIBLE_ITEMS);
+    let new_visible = items.len().min(MAX_VISIBLE_ITEMS);
+    let new_total = new_visible + 2; // items + borders
 
     if prev_lines == 0 {
-        // No previous popup: just show the new one
+        return render_popup(items, selected, query, theme, terminal_cols);
+    }
+
+    let prev_total = prev_lines + 2; // previous items + borders
+
+    // Render the new popup (includes hide/show cursor and cursor-up)
+    let content = render_popup(items, selected, query, theme, terminal_cols)?;
+
+    if prev_total <= new_total {
+        // New popup is same size or larger: just overwrite
         return Some(content);
     }
 
-    // Build atomic output: overwrite content + clear leftover lines
+    // New popup is smaller: need to clear extra lines.
+    // Strip the trailing cursor-up + show-cursor from content,
+    // add extra clear lines, then do cursor-up for the full height.
+    let suffix = format!("\x1b[{}A\r\x1b[?25h", new_total);
+    let inner = content.strip_suffix(&suffix).unwrap_or(&content);
+
     let mut out = String::with_capacity(content.len() + 128);
-
-    // The rendered popup format is:
-    //   \x1b[?25l  (hide cursor)
-    //   \x1b[s     (save cursor)
-    //   ... content lines ...
-    //   \x1b[u     (restore cursor)
-    //   \x1b[?25h  (show cursor)
-    // Strip the outer wrapper so we can add extra clear lines before restore.
-    let inner = content.strip_prefix("\x1b[?25l\x1b[s").unwrap_or(&content);
-    let inner = inner.strip_suffix("\x1b[u\x1b[?25h").unwrap_or(inner);
-
-    out.push_str("\x1b[?25l\x1b[s"); // hide cursor + save
-
-    // Write the popup content (overwrites previous lines in place)
     out.push_str(inner);
 
-    // If previous popup had more lines, clear the extras
-    if prev_lines > new_lines {
-        let extra = prev_lines - new_lines;
-        for _ in 0..extra {
-            write!(out, "\x1b[E\x1b[2K").ok();
-        }
+    // Clear the extra lines
+    let extra = prev_total - new_total;
+    for _ in 0..extra {
+        write!(out, "\n\r\x1b[2K").ok();
     }
 
-    out.push_str("\x1b[u\x1b[?25h"); // restore cursor + show cursor
+    // Move back up the full distance (new content + cleared lines)
+    write!(out, "\x1b[{}A\r\x1b[?25h", new_total + extra).ok();
 
     Some(out)
 }
