@@ -42,6 +42,15 @@ libc = "0.2"
 # File watching for spec hot-reload
 notify = "7"
 
+# PTY management (openpty, cfmakeraw, tcsetattr, TIOCSWINSZ)
+nix = { version = "0.29", features = ["term", "ioctl", "process", "signal", "fs"] }
+
+# Base64 encoding for OSC payloads
+base64 = "0.22"
+
+# Panic-safe cleanup (restore terminal raw mode)
+scopeguard = "1"
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 
