@@ -109,8 +109,8 @@ impl PopupState {
 
         match key {
             KeyEvent::Tab => {
-                // Accept the selected suggestion (capped to visible items)
-                if self.selected < self.items.len().min(10) {
+                // Accept the selected suggestion
+                if self.selected < self.items.len() {
                     let item = &self.items[self.selected];
                     let insert_text = item.insert.clone();
                     let token_start = self.find_token_start();
@@ -130,7 +130,8 @@ impl PopupState {
 
             KeyEvent::ArrowDown => {
                 if !self.items.is_empty() {
-                    self.selected = (self.selected + 1) % self.items.len().min(10);
+                    // Navigate through ALL items, not just visible 10
+                    self.selected = (self.selected + 1) % self.items.len();
                     self.render_current()
                 } else {
                     PopupAction::Nothing
@@ -139,8 +140,8 @@ impl PopupState {
 
             KeyEvent::ArrowUp => {
                 if !self.items.is_empty() {
-                    let max = self.items.len().min(10);
-                    self.selected = (self.selected + max - 1) % max;
+                    let total = self.items.len();
+                    self.selected = (self.selected + total - 1) % total;
                     self.render_current()
                 } else {
                     PopupAction::Nothing
@@ -180,16 +181,34 @@ impl PopupState {
         }
     }
 
-    /// Render the popup with the current selection.
+    /// Render the popup with the current selection, showing a sliding window of up to 10 items.
     fn render_current(&mut self) -> PopupAction {
+        let total = self.items.len();
+        let max_visible = 10;
+
+        // Calculate the visible window: a slice of up to 10 items around the selection
+        let (start, visible_items) = if total <= max_visible {
+            (0, &self.items[..])
+        } else {
+            // Slide the window so the selected item is always visible
+            let start = if self.selected < max_visible {
+                0
+            } else {
+                (self.selected - max_visible + 1).min(total - max_visible)
+            };
+            (start, &self.items[start..start + max_visible])
+        };
+
+        let selected_in_window = self.selected - start;
+
         if let Some(rendered) = overlay::render_popup(
-            &self.items,
-            self.selected,
+            visible_items,
+            selected_in_window,
             "",
             &self.theme,
             Some(self.terminal_cols),
         ) {
-            self.popup_lines = self.items.len().min(10);
+            self.popup_lines = visible_items.len();
             PopupAction::Show(rendered)
         } else {
             self.hide()
