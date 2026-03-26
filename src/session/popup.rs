@@ -25,6 +25,8 @@ pub enum PopupAction {
         /// Text to insert.
         insert_text: String,
     },
+    /// Erase popup then forward key to PTY (used for Enter with popup visible).
+    EraseAndForward { lines: usize, bytes: Vec<u8> },
     /// No action needed.
     Nothing,
 }
@@ -107,8 +109,8 @@ impl PopupState {
 
         match key {
             KeyEvent::Tab => {
-                // Accept the selected suggestion
-                if self.selected < self.items.len() {
+                // Accept the selected suggestion (capped to visible items)
+                if self.selected < self.items.len().min(10) {
                     let item = &self.items[self.selected];
                     let insert_text = item.insert.clone();
                     let token_start = self.find_token_start();
@@ -146,9 +148,16 @@ impl PopupState {
             }
 
             KeyEvent::Enter => {
-                // Enter with popup visible: hide popup and forward Enter to execute
-                self.hide();
-                PopupAction::ForwardKey(key.raw_bytes())
+                // Enter with popup visible: erase popup then forward Enter to execute
+                let lines = self.popup_lines;
+                self.visible = false;
+                self.popup_lines = 0;
+                self.items.clear();
+                self.selected = 0;
+                PopupAction::EraseAndForward {
+                    lines,
+                    bytes: key.raw_bytes(),
+                }
             }
 
             // Any other key with popup visible: forward to PTY
@@ -338,10 +347,12 @@ mod tests {
 
         let action = popup.on_key(&KeyEvent::Enter);
         match action {
-            PopupAction::ForwardKey(bytes) => assert_eq!(bytes, vec![0x0d]),
-            _ => panic!("expected ForwardKey for Enter"),
+            PopupAction::EraseAndForward { lines, bytes } => {
+                assert_eq!(lines, 3); // test set popup_lines = 3
+                assert_eq!(bytes, vec![0x0d]);
+            }
+            _ => panic!("expected EraseAndForward for Enter"),
         }
-        // Popup should be hidden after Enter
         assert!(!popup.visible);
     }
 }
