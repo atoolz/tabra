@@ -77,7 +77,7 @@ pub fn render_popup(
     write!(out, "\x1b[s").ok();
 
     // Draw top border (clear line first for clean overwrite)
-    write!(out, "\n\r\x1b[2K").ok();
+    write!(out, "\x1b[E\x1b[2K").ok();
     write_colored(
         &mut out,
         theme.border_fg,
@@ -94,7 +94,7 @@ pub fn render_popup(
             theme.popup_bg
         };
 
-        write!(out, "\n\r\x1b[2K").ok();
+        write!(out, "\x1b[E\x1b[2K").ok();
 
         // Icon
         let icon = kind_icon_ascii(item.kind);
@@ -138,7 +138,7 @@ pub fn render_popup(
     }
 
     // Draw bottom border with item count
-    write!(out, "\n\r\x1b[2K").ok();
+    write!(out, "\x1b[E\x1b[2K").ok();
     let count_str = if items.len() > MAX_VISIBLE_ITEMS {
         format!(" {}/{} ", visible_count, items.len())
     } else {
@@ -166,7 +166,7 @@ pub fn erase_popup(num_lines: usize) -> String {
     let mut out = String::new();
     write!(out, "\x1b[?25l\x1b[s").ok(); // hide cursor + save position
     for _ in 0..num_lines + 2 {
-        write!(out, "\n\r\x1b[2K").ok();
+        write!(out, "\x1b[E\x1b[2K").ok();
     }
     write!(out, "\x1b[u\x1b[?25h").ok(); // restore position + show cursor
     out
@@ -215,7 +215,7 @@ pub fn render_popup_inplace(
     if prev_lines > new_lines {
         let extra = prev_lines - new_lines;
         for _ in 0..extra {
-            write!(out, "\n\r\x1b[2K").ok();
+            write!(out, "\x1b[E\x1b[2K").ok();
         }
     }
 
