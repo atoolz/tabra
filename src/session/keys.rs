@@ -239,19 +239,21 @@ pub fn parse_bytes(buf: &[u8], escape_pending: bool) -> (Vec<KeyEvent>, bool) {
 }
 
 /// Try to decode a single UTF-8 character from the start of a byte slice.
-/// Returns the character and its byte length, or None if invalid.
+/// Returns the character and its byte length, or None if invalid/incomplete.
 fn decode_utf8_char(bytes: &[u8]) -> Option<(char, usize)> {
-    let s = std::str::from_utf8(bytes).ok().or_else(|| {
-        // Try progressively shorter slices (up to 4 bytes for UTF-8)
-        for len in (1..=4.min(bytes.len())).rev() {
-            if let Ok(s) = std::str::from_utf8(&bytes[..len]) {
-                return Some(s);
+    // Try progressively shorter slices from 4 bytes down to 1.
+    // Guard: the decoded char must occupy exactly the bytes we tried,
+    // preventing false positives from slices that decode to multiple chars.
+    for len in (1..=4.min(bytes.len())).rev() {
+        if let Ok(s) = std::str::from_utf8(&bytes[..len]) {
+            if let Some(ch) = s.chars().next() {
+                if ch.len_utf8() == len {
+                    return Some((ch, len));
+                }
             }
         }
-        None
-    })?;
-    let ch = s.chars().next()?;
-    Some((ch, ch.len_utf8()))
+    }
+    None
 }
 
 #[cfg(test)]

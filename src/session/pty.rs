@@ -50,12 +50,15 @@ impl PtyPair {
     /// The slave fd is dup'd for stdin/stdout/stderr and then closed in the parent,
     /// so that read() on master returns EOF when the child exits.
     pub fn spawn_shell(self, shell: &str, init_script_path: &str) -> Result<(OwnedFd, Child)> {
+        // Destructure to make partial moves explicit
+        let PtyPair { master, slave } = self;
+
         // Dup the slave fd for stdout and stderr before consuming the OwnedFd.
-        // If either dup fails, self.slave is still owned and will be closed on drop.
-        let stdout_fd = dup(self.slave.as_raw_fd()).context("dup slave for stdout")?;
-        let stderr_fd = dup(self.slave.as_raw_fd()).context("dup slave for stderr")?;
+        // If either dup fails, slave is still owned and will be closed on drop.
+        let stdout_fd = dup(slave.as_raw_fd()).context("dup slave for stdout")?;
+        let stderr_fd = dup(slave.as_raw_fd()).context("dup slave for stderr")?;
         // Both dups succeeded: now consume the OwnedFd for stdin
-        let slave_raw = self.slave.into_raw_fd();
+        let slave_raw = slave.into_raw_fd();
 
         let mut cmd = Command::new(shell);
 
@@ -87,7 +90,7 @@ impl PtyPair {
         }
 
         let child = cmd.spawn().context("failed to spawn shell")?;
-        Ok((self.master, child))
+        Ok((master, child))
     }
 }
 
