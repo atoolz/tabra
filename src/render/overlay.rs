@@ -78,7 +78,7 @@ pub fn render_popup(
     // This ensures there's room for the popup even when the cursor is near the
     // bottom of the terminal. The terminal scrolls the content up to make room.
     for _ in 0..total_popup_lines {
-        write!(out, "\n").ok();
+        writeln!(out).ok();
     }
     // Move cursor back up to where it was
     write!(out, "\x1b[{}A", total_popup_lines).ok();

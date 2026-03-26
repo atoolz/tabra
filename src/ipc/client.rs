@@ -113,6 +113,13 @@ pub fn request_dismiss() -> Result<()> {
     Ok(())
 }
 
+/// Check if daemon is running (silent, no output).
+pub fn is_daemon_running() -> bool {
+    send_request(&Request::Status)
+        .map(|r| matches!(r, Response::StatusInfo { .. }))
+        .unwrap_or(false)
+}
+
 /// Check daemon status and print it.
 pub fn request_status() -> Result<()> {
     match send_request(&Request::Status)? {

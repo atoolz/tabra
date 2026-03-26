@@ -43,6 +43,8 @@ pub struct PopupState {
     pub terminal_cols: u16,
     pub theme: Theme,
     pub popup_lines: usize,
+    /// Length of the current ghost text (for clearing).
+    pub ghost_len: usize,
 }
 
 impl PopupState {
@@ -56,6 +58,7 @@ impl PopupState {
             terminal_cols,
             theme: Theme::default(),
             popup_lines: 0,
+            ghost_len: 0,
         }
     }
 
@@ -236,7 +239,7 @@ impl PopupState {
 
     /// Find the start of the current token in the last known buffer.
     /// Uses a forward walk matching the Rust parser's tokenizer logic.
-    fn find_token_start(&self) -> usize {
+    pub fn find_token_start(&self) -> usize {
         let before = &self.last_buffer[..self.last_cursor.min(self.last_buffer.len())];
         let mut last_boundary = 0;
         let mut in_sq = false;

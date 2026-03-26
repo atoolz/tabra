@@ -120,10 +120,17 @@ enum Commands {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    // Session mode defaults to warn (no visible logs).
+    // Other modes default to info. RUST_LOG overrides both.
+    let default_level = match &cli.command {
+        Commands::Session { .. } => "tabra=warn",
+        _ => "tabra=info",
+    };
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "tabra=info".into()),
+                .unwrap_or_else(|_| default_level.into()),
         )
         .init();
 
