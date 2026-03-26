@@ -1,7 +1,8 @@
 //! Bash shell hook for Tabra.
 //!
-//! Uses readline's `bind -x` to intercept keystrokes and `READLINE_LINE` /
-//! `READLINE_POINT` to read/modify the command buffer. Requires bash 4.0+.
+//! Uses bash's programmable completion (`complete -D -F`) for Tab acceptance,
+//! `bind -x` for keystroke interception, and ANSI escape sequences for the
+//! popup overlay. Requires bash 4.0+.
 //!
 //! The hook script is printed to stdout and eval'd by the user's .bashrc:
 //!   eval "$(tabra init bash)"
@@ -31,7 +32,6 @@ _TABRA_POPUP_VISIBLE=0
 _TABRA_POPUP_LINES=0
 _TABRA_SELECTED=0
 _TABRA_ITEM_COUNT=0
-# Items stored as newline-separated strings (bash arrays are awkward for this)
 _TABRA_DISPLAYS=()
 _TABRA_INSERTS=()
 _TABRA_DESCS=()
@@ -51,7 +51,7 @@ _tabra_ensure_daemon() {
 
 # Erase the popup overlay
 _tabra_erase_popup() {
-    if ((  _TABRA_POPUP_VISIBLE )); then
+    if (( _TABRA_POPUP_VISIBLE )); then
         local i
         for (( i = 0; i < _TABRA_POPUP_LINES + 2; i++ )); do
             printf '\n\r\033[2K'
@@ -69,17 +69,13 @@ _tabra_parse_response() {
     _TABRA_DESCS=()
     _TABRA_ITEM_COUNT=0
 
-    local IFS=$'\n'
     local -a lines
-    read -ra lines <<< ""
     mapfile -t lines <<< "$1"
 
-    # First line is the count
     (( ${#lines[@]} < 1 )) && return
     _TABRA_ITEM_COUNT=${lines[0]}
     (( _TABRA_ITEM_COUNT == 0 )) && return
 
-    # Parse each subsequent line (tab-separated: display\tinsert\tdescription)
     local i
     for (( i = 1; i < ${#lines[@]} && i <= _TABRA_ITEM_COUNT; i++ )); do
         local line="${lines[$i]}"
@@ -206,10 +202,15 @@ _tabra_accept() {
         fi
         _tabra_erase_popup
         _TABRA_ITEM_COUNT=0
+        _TABRA_RENDERED_POPUP=""
+    else
+        # No popup visible: do normal Tab completion
+        # Re-enable default readline completion for this keypress
+        return 1
     fi
 }
 
-# Navigate up
+# Navigate up (Ctrl+P)
 _tabra_up() {
     if (( _TABRA_POPUP_VISIBLE )); then
         (( _TABRA_SELECTED = (_TABRA_SELECTED - 1 + _TABRA_ITEM_COUNT) % _TABRA_ITEM_COUNT ))
@@ -217,7 +218,7 @@ _tabra_up() {
     fi
 }
 
-# Navigate down
+# Navigate down (Ctrl+N)
 _tabra_down() {
     if (( _TABRA_POPUP_VISIBLE )); then
         (( _TABRA_SELECTED = (_TABRA_SELECTED + 1) % _TABRA_ITEM_COUNT ))
@@ -225,11 +226,12 @@ _tabra_down() {
     fi
 }
 
-# Dismiss the popup
+# Dismiss the popup (Escape)
 _tabra_dismiss() {
     if (( _TABRA_POPUP_VISIBLE )); then
         _tabra_erase_popup
         _TABRA_ITEM_COUNT=0
+        _TABRA_RENDERED_POPUP=""
         tabra dismiss &>/dev/null &
         disown
     fi
@@ -237,7 +239,6 @@ _tabra_dismiss() {
 
 # Self-insert: type a character then fetch completions
 _tabra_self_insert() {
-    # The character that triggered this binding is in the first argument
     local char="$1"
     if [[ -n "$char" ]]; then
         local before="${READLINE_LINE:0:$READLINE_POINT}"
@@ -264,22 +265,37 @@ _tabra_backward_delete() {
     fi
 }
 
-# Bind keys using bind -x (bash 4.0+)
-# Tab: accept suggestion
-bind -x '"\t": _tabra_accept'
+# Clean up popup before command execution.
+# This runs via PROMPT_COMMAND before the next prompt is drawn,
+# ensuring the popup is erased after Enter or any command execution.
+_tabra_pre_prompt() {
+    _tabra_erase_popup
+    _TABRA_ITEM_COUNT=0
+    _TABRA_RENDERED_POPUP=""
+}
 
-# Up/Down arrows: navigate popup
-bind -x '"\e[A": _tabra_up'
-bind -x '"\e[B": _tabra_down'
+# Append our pre-prompt cleanup (don't overwrite existing PROMPT_COMMAND)
+if [[ -z "$PROMPT_COMMAND" ]]; then
+    PROMPT_COMMAND="_tabra_pre_prompt"
+elif [[ "$PROMPT_COMMAND" != *"_tabra_pre_prompt"* ]]; then
+    PROMPT_COMMAND="_tabra_pre_prompt;${PROMPT_COMMAND}"
+fi
+
+# ---- Key Bindings ----
+# Tab: accept suggestion (via bind -x, overrides default completion)
+bind -x '"\C-i": _tabra_accept'
+
+# Ctrl+N / Ctrl+P: navigate popup (these don't conflict with arrow keys)
+bind -x '"\C-n": _tabra_down'
+bind -x '"\C-p": _tabra_up'
 
 # Escape: dismiss popup
-bind -x '"\e": _tabra_dismiss'
+bind -x '"\C-g": _tabra_dismiss'
 
 # Backspace: delete + refresh
 bind -x '"\C-?": _tabra_backward_delete'
 
 # Bind printable characters to self-insert + fetch
-# Letters, digits, and common symbols
 _tabra_bind_chars() {
     local chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     chars+="-./_~:=+@!#%"
@@ -287,7 +303,6 @@ _tabra_bind_chars() {
     local i
     for (( i = 0; i < ${#chars}; i++ )); do
         local c="${chars:$i:1}"
-        # Use bind -x with a wrapper that passes the character
         bind -x "\"$c\": _tabra_self_insert '$c'"
     done
 }
