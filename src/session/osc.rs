@@ -92,11 +92,22 @@ impl OscParser {
                             self.buf.clear(); // discard prefix bytes
                         }
                     } else {
-                        // Mismatch: not a Tabra OSC. Flush accumulated bytes as passthrough.
-                        passthrough.extend_from_slice(&self.buf);
+                        // Mismatch: not a Tabra OSC. Flush accumulated bytes
+                        // (except the mismatched byte) as passthrough.
+                        // If the mismatched byte is ESC (start of a new potential
+                        // OSC), restart prefix matching instead of going to Normal.
+                        let accumulated_before = self.buf.len() - 1;
+                        passthrough.extend_from_slice(&self.buf[..accumulated_before]);
                         self.buf.clear();
-                        self.prefix_matched = 0;
-                        self.state = State::Normal;
+                        if byte == OSC_PREFIX[0] {
+                            self.state = State::MatchingPrefix;
+                            self.prefix_matched = 1;
+                            self.buf.push(byte);
+                        } else {
+                            passthrough.push(byte);
+                            self.prefix_matched = 0;
+                            self.state = State::Normal;
+                        }
                     }
                 }
 

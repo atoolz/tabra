@@ -74,6 +74,12 @@ impl PtyPair {
         // SAFETY: each fd is a distinct open descriptor from openpty/dup.
         // slave_raw is consumed by stdin, stdout_fd by stdout, stderr_fd by stderr.
         // After spawn, the parent has no remaining references to the slave side.
+        //
+        // NOTE: if spawn() fails, these fds leak because Stdio::from_raw_fd
+        // takes ownership but std::process::Command does not close them on
+        // drop when spawn fails. This is an accepted minor leak on an extremely
+        // rare error path (spawn fails only if the shell binary is missing or
+        // exec is denied).
         unsafe {
             cmd.stdin(Stdio::from_raw_fd(slave_raw));
             cmd.stdout(Stdio::from_raw_fd(stdout_fd.into_raw_fd()));
