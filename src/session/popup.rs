@@ -40,7 +40,7 @@ pub struct PopupState {
     pub last_cursor: usize,
     pub terminal_cols: u16,
     pub theme: Theme,
-    popup_lines: usize,
+    pub popup_lines: usize,
 }
 
 impl PopupState {
