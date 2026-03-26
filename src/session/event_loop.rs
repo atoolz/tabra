@@ -258,6 +258,11 @@ pub async fn run(
                         t.sync(buffer, cursor);
                     }
                     OscEvent::PromptStart => {
+                        // Reset buffer tracker on new prompt
+                        let mut t = tracker_for_osc.lock().await;
+                        t.sync(String::new(), 0);
+                        drop(t);
+
                         let mut popup = pty_popup.lock().await;
                         if popup.visible {
                             let lines = popup.items.len().min(10);

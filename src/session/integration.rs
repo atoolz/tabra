@@ -13,22 +13,12 @@
 pub fn bash_integration() -> String {
     r##"
 # Tabra PTY Session Integration for Bash
-# ZERO bind-x on printable characters (no readline redraw flash).
-# The PTY wrapper handles all character forwarding.
-# Only a single hidden trigger (\C-x\C-r) emits the OSC report.
+# Source user's bashrc first so we inherit their prompt, aliases, etc.
+if [[ -f ~/.bashrc ]]; then
+    source ~/.bashrc
+fi
 
-__tabra_report_cmdline() {
-    local b64
-    b64=$(printf '%s' "$READLINE_LINE" | base64 -w0 2>/dev/null || printf '%s' "$READLINE_LINE" | base64 2>/dev/null)
-    printf '\033]6973;CL;%s;%d\007' "$b64" "$READLINE_POINT"
-}
-
-# Single bind-x on Ctrl-X Ctrl-R: the PTY wrapper injects this after each keystroke.
-# This does NOT override any printable character binding, so readline handles
-# characters normally with zero visual artifacts.
-bind -x '"\C-x\C-r": __tabra_report_cmdline'
-
-# Prompt markers
+# Prompt markers (OSC sequences stripped by the PTY wrapper)
 __tabra_prompt_start() { printf '\033]6973;PS\007'; }
 __tabra_prompt_end() { printf '\033]6973;PE\007'; }
 
