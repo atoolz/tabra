@@ -1,4 +1,8 @@
 mod daemon;
+// Session modules define the PTY wrapper infrastructure. Many types are not
+// yet consumed until the event loop (Phase 5) is implemented.
+#[allow(dead_code)]
+mod session;
 
 use tabra::ipc;
 use tabra::shell;
@@ -103,6 +107,14 @@ enum Commands {
         #[arg(long)]
         from: PathBuf,
     },
+
+    /// Start a PTY-wrapped shell session with autocomplete
+    /// (Arrow keys, Tab, Escape all work without readline conflicts)
+    Session {
+        /// Shell to use (defaults to $SHELL)
+        #[arg(value_enum)]
+        shell: Option<shell::ShellType>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -137,5 +149,6 @@ fn main() -> anyhow::Result<()> {
         Commands::Stop => ipc::client::request_stop(),
         Commands::InstallSpecs { from } => spec::loader::install_specs(&from),
         Commands::ValidateSpecs { from } => spec::loader::validate_specs(&from),
+        Commands::Session { shell } => session::run(shell),
     }
 }
