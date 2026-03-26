@@ -13,7 +13,9 @@
 pub fn bash_integration() -> String {
     r##"
 # Tabra PTY Session Integration for Bash
-# Emits OSC markers; does NOT bind keys for popup (PTY wrapper handles that)
+# ZERO bind-x on printable characters (no readline redraw flash).
+# The PTY wrapper handles all character forwarding.
+# Only a single hidden trigger (\C-x\C-r) emits the OSC report.
 
 __tabra_report_cmdline() {
     local b64
@@ -21,53 +23,18 @@ __tabra_report_cmdline() {
     printf '\033]6973;CL;%s;%d\007' "$b64" "$READLINE_POINT"
 }
 
-__tabra_prompt_start() {
-    printf '\033]6973;PS\007'
-}
-
-__tabra_prompt_end() {
-    printf '\033]6973;PE\007'
-}
-
-# Self-insert wrapper: insert char into READLINE_LINE then report
-__tabra_si() {
-    local c="$1"
-    local before="${READLINE_LINE:0:$READLINE_POINT}"
-    local after="${READLINE_LINE:$READLINE_POINT}"
-    READLINE_LINE="${before}${c}${after}"
-    (( READLINE_POINT += ${#c} ))
-    __tabra_report_cmdline
-}
-
-# Backward delete wrapper: delete char then report
-__tabra_bd() {
-    if (( READLINE_POINT > 0 )); then
-        READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT-1))}${READLINE_LINE:$READLINE_POINT}"
-        (( READLINE_POINT-- ))
-    fi
-    __tabra_report_cmdline
-}
-
-# Bind printable characters
-__tabra_bind() {
-    local chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    chars+="-./_~:=+@!#%"
-    chars+=" "
-    local i
-    for (( i = 0; i < ${#chars}; i++ )); do
-        local c="${chars:$i:1}"
-        bind -x "\"$c\": __tabra_si '$c'"
-    done
-}
-__tabra_bind
-
-# Backspace
-bind -x '"\C-?": __tabra_bd'
+# Single bind-x on Ctrl-X Ctrl-R: the PTY wrapper injects this after each keystroke.
+# This does NOT override any printable character binding, so readline handles
+# characters normally with zero visual artifacts.
+bind -x '"\C-x\C-r": __tabra_report_cmdline'
 
 # Prompt markers
+__tabra_prompt_start() { printf '\033]6973;PS\007'; }
+__tabra_prompt_end() { printf '\033]6973;PE\007'; }
+
 if [[ -z "$PROMPT_COMMAND" ]]; then
     PROMPT_COMMAND="__tabra_prompt_start"
-else
+elif [[ "$PROMPT_COMMAND" != *"__tabra_prompt_start"* ]]; then
     PROMPT_COMMAND="__tabra_prompt_start;${PROMPT_COMMAND}"
 fi
 PS1="${PS1}\$(__tabra_prompt_end)"

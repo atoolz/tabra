@@ -416,6 +416,11 @@ async fn handle_key_event(
     match action {
         PopupAction::ForwardKey(bytes) => {
             let _ = pty_tx.send(bytes).await;
+            // Inject Ctrl-X Ctrl-R to trigger the OSC report from bash.
+            // This is bound in the integration script to __tabra_report_cmdline.
+            // It fires AFTER readline processes the character, so the report
+            // contains the updated READLINE_LINE with the new character.
+            let _ = pty_tx.send(vec![0x18, 0x12]).await; // \C-x \C-r
         }
         PopupAction::Show(ansi) => {
             let _ = write_tx.send(TerminalWrite::ShowPopup(ansi)).await;
