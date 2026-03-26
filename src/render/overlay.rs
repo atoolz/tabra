@@ -174,9 +174,8 @@ pub fn erase_popup(num_lines: usize) -> String {
     out
 }
 
-/// Render popup with in-place overwrite to avoid flicker.
-/// If `prev_lines` > 0, clears any extra lines from the previous popup
-/// that the new popup doesn't cover. All in one atomic write.
+/// Render popup, erasing previous popup first if it existed.
+/// Produces a single atomic string: erase old + render new.
 pub fn render_popup_inplace(
     items: &[CompletionItem],
     selected: usize,
@@ -185,40 +184,32 @@ pub fn render_popup_inplace(
     terminal_cols: Option<u16>,
     prev_lines: usize,
 ) -> Option<String> {
-    let new_visible = items.len().min(MAX_VISIBLE_ITEMS);
-    let new_total = new_visible + 2; // items + borders
-
     if prev_lines == 0 {
         return render_popup(items, selected, query, theme, terminal_cols);
     }
 
     let prev_total = prev_lines + 2; // previous items + borders
 
-    // Render the new popup (includes hide/show cursor and cursor-up)
-    let content = render_popup(items, selected, query, theme, terminal_cols)?;
+    let mut out = String::with_capacity(2048);
 
-    if prev_total <= new_total {
-        // New popup is same size or larger: just overwrite
-        return Some(content);
-    }
+    // 1. Hide cursor + DEC save (at prompt position)
+    write!(out, "\x1b[?25l\x1b7").ok();
 
-    // New popup is smaller: need to clear extra lines.
-    // Strip the trailing cursor-up + show-cursor from content,
-    // add extra clear lines, then do cursor-up for the full height.
-    let suffix = "\x1b8\x1b[?25h".to_string();
-    let inner = content.strip_suffix(&suffix).unwrap_or(&content);
-
-    let mut out = String::with_capacity(content.len() + 128);
-    out.push_str(inner);
-
-    // Clear the extra lines
-    let extra = prev_total - new_total;
-    for _ in 0..extra {
+    // 2. Erase old popup: move down through each line, clear it
+    for _ in 0..prev_total {
         write!(out, "\n\r\x1b[2K").ok();
     }
 
-    // Move back up the full distance (new content + cleared lines)
-    write!(out, "\x1b8\x1b[?25h").ok();
+    // 3. DEC restore back to prompt position
+    write!(out, "\x1b8").ok();
+
+    // 4. Render new popup content. render_popup starts with \x1b[?25l\x1b7
+    //    which we already emitted, so strip that prefix.
+    let new_content = render_popup(items, selected, query, theme, terminal_cols)?;
+    let inner = new_content
+        .strip_prefix("\x1b[?25l\x1b7")
+        .unwrap_or(&new_content);
+    out.push_str(inner);
 
     Some(out)
 }
