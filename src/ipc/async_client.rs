@@ -10,6 +10,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
+const WRITE_TIMEOUT: Duration = Duration::from_millis(500);
 const READ_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Send a request to the daemon and return the response.
@@ -24,12 +25,12 @@ pub async fn send_request(request: &Request) -> Result<Response> {
     let (reader, mut writer) = stream.into_split();
 
     let request_line = request.to_json_line();
-    tokio::time::timeout(CONNECT_TIMEOUT, writer.write_all(request_line.as_bytes()))
+    tokio::time::timeout(WRITE_TIMEOUT, writer.write_all(request_line.as_bytes()))
         .await
         .context("write timeout")?
         .context("write request")?;
 
-    tokio::time::timeout(CONNECT_TIMEOUT, writer.flush())
+    tokio::time::timeout(WRITE_TIMEOUT, writer.flush())
         .await
         .context("flush timeout")?
         .context("flush request")?;

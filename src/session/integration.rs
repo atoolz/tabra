@@ -148,7 +148,7 @@ bind \x7f __tabra_bd
 function __tabra_prompt_start --on-event fish_prompt
     printf '\033]6973;PS\007'
 end
-function __tabra_prompt_end --on-event fish_postexec
+function __tabra_prompt_end --on-event fish_preexec
     printf '\033]6973;PE\007'
 end
 "##

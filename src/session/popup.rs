@@ -88,7 +88,7 @@ impl PopupState {
 
                 // Use daemon's pre-rendered popup if available
                 if let Some(popup) = rendered_popup {
-                    let lines = popup.matches('\n').count().saturating_sub(1).max(1);
+                    let lines = popup.matches('\n').count().max(1);
                     self.popup_lines = lines;
                     PopupAction::Show(popup)
                 } else {
@@ -181,7 +181,7 @@ impl PopupState {
             &self.theme,
             Some(self.terminal_cols),
         ) {
-            let lines = rendered.matches('\n').count().saturating_sub(1).max(1);
+            let lines = rendered.matches('\n').count().max(1);
             self.popup_lines = lines;
             PopupAction::Show(rendered)
         } else {
