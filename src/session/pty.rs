@@ -10,6 +10,7 @@ use nix::pty::openpty;
 use nix::sys::termios;
 use nix::unistd::dup;
 use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
+use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 
 /// A PTY pair: master fd for the session, slave fd for the child shell.
@@ -74,6 +75,27 @@ impl PtyPair {
             _ => {
                 // zsh and unknown shells: just spawn, integration via env
             }
+        }
+
+        // Create a new session and set the slave as controlling terminal.
+        // This gives the child shell job control (fg, bg, Ctrl-Z).
+        let slave_for_ctty = slave_raw;
+        // SAFETY: pre_exec runs in the child process after fork, before exec.
+        // setsid() creates a new session so the child is the session leader.
+        // TIOCSCTTY sets the slave PTY as the controlling terminal, enabling
+        // job control signals (SIGTSTP, SIGCONT, etc.).
+        // No user input is involved; all values are compile-time constants
+        // and file descriptors from openpty.
+        unsafe {
+            cmd.pre_exec(move || {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::ioctl(slave_for_ctty, libc::TIOCSCTTY as libc::c_ulong, 0) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
         }
 
         // SAFETY: each fd is a distinct open descriptor from openpty/dup.
