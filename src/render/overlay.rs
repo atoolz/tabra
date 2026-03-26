@@ -196,14 +196,17 @@ pub fn render_popup_inplace(
     // Build atomic output: overwrite content + clear leftover lines
     let mut out = String::with_capacity(content.len() + 128);
 
-    // The rendered popup already saves/restores cursor internally.
-    // We need to strip the save/restore and handle it ourselves.
-    // The popup format is: \x1b[s + content + \x1b[u
-    // Strip the leading \x1b[s and trailing \x1b[u
-    let inner = content.strip_prefix("\x1b[s").unwrap_or(&content);
-    let inner = inner.strip_suffix("\x1b[u").unwrap_or(inner);
+    // The rendered popup format is:
+    //   \x1b[?25l  (hide cursor)
+    //   \x1b[s     (save cursor)
+    //   ... content lines ...
+    //   \x1b[u     (restore cursor)
+    //   \x1b[?25h  (show cursor)
+    // Strip the outer wrapper so we can add extra clear lines before restore.
+    let inner = content.strip_prefix("\x1b[?25l\x1b[s").unwrap_or(&content);
+    let inner = inner.strip_suffix("\x1b[u\x1b[?25h").unwrap_or(inner);
 
-    out.push_str("\x1b[s"); // save cursor once
+    out.push_str("\x1b[?25l\x1b[s"); // hide cursor + save
 
     // Write the popup content (overwrites previous lines in place)
     out.push_str(inner);
@@ -216,7 +219,7 @@ pub fn render_popup_inplace(
         }
     }
 
-    out.push_str("\x1b[u"); // restore cursor once
+    out.push_str("\x1b[u\x1b[?25h"); // restore cursor + show cursor
 
     Some(out)
 }
