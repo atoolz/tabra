@@ -48,6 +48,7 @@ pub fn render_popup(
         .unwrap_or(MAX_POPUP_WIDTH);
 
     let visible_count = items.len().min(MAX_VISIBLE_ITEMS);
+    let total_popup_lines = visible_count + 2; // items + top border + bottom border
     let visible_items = &items[..visible_count];
 
     // Calculate popup width based on content
@@ -73,7 +74,16 @@ pub fn render_popup(
     // Hide cursor during render to prevent flicker
     write!(out, "\x1b[?25l").ok();
 
-    // Save cursor position
+    // Reserve space below the cursor by emitting newlines, then moving back up.
+    // This ensures there's room for the popup even when the cursor is near the
+    // bottom of the terminal. The terminal scrolls the content up to make room.
+    for _ in 0..total_popup_lines {
+        write!(out, "\n").ok();
+    }
+    // Move cursor back up to where it was
+    write!(out, "\x1b[{}A", total_popup_lines).ok();
+
+    // Save cursor position (after scroll, so restore returns here)
     write!(out, "\x1b[s").ok();
 
     // Draw top border (clear line first for clean overwrite)
