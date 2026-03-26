@@ -170,6 +170,55 @@ pub fn erase_popup(num_lines: usize) -> String {
     out
 }
 
+/// Render popup with in-place overwrite to avoid flicker.
+/// If `prev_lines` > 0, clears any extra lines from the previous popup
+/// that the new popup doesn't cover. All in one atomic write.
+pub fn render_popup_inplace(
+    items: &[CompletionItem],
+    selected: usize,
+    query: &str,
+    theme: &Theme,
+    terminal_cols: Option<u16>,
+    prev_lines: usize,
+) -> Option<String> {
+    // Render the new popup content
+    let content = render_popup(items, selected, query, theme, terminal_cols)?;
+
+    let new_lines = items.len().min(MAX_VISIBLE_ITEMS);
+
+    if prev_lines == 0 {
+        // No previous popup: just show the new one
+        return Some(content);
+    }
+
+    // Build atomic output: overwrite content + clear leftover lines
+    let mut out = String::with_capacity(content.len() + 128);
+
+    // The rendered popup already saves/restores cursor internally.
+    // We need to strip the save/restore and handle it ourselves.
+    // The popup format is: \x1b[s + content + \x1b[u
+    // Strip the leading \x1b[s and trailing \x1b[u
+    let inner = content.strip_prefix("\x1b[s").unwrap_or(&content);
+    let inner = inner.strip_suffix("\x1b[u").unwrap_or(inner);
+
+    out.push_str("\x1b[s"); // save cursor once
+
+    // Write the popup content (overwrites previous lines in place)
+    out.push_str(inner);
+
+    // If previous popup had more lines, clear the extras
+    if prev_lines > new_lines {
+        let extra = prev_lines - new_lines;
+        for _ in 0..extra {
+            write!(out, "\n\r\x1b[2K").ok();
+        }
+    }
+
+    out.push_str("\x1b[u"); // restore cursor once
+
+    Some(out)
+}
+
 fn write_colored(out: &mut String, fg: Color, bg: Color, text: &str) {
     write!(
         out,

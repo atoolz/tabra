@@ -77,43 +77,19 @@ impl PopupState {
             };
 
         match response {
-            Response::Completions {
-                items,
-                rendered_popup,
-                ..
-            } => {
+            Response::Completions { items, .. } => {
                 if items.is_empty() {
                     return self.hide();
                 }
 
-                // Remember old popup size for erasing
-                let old_lines = if self.visible { self.popup_lines } else { 0 };
+                let prev = if self.visible { self.popup_lines } else { 0 };
 
                 self.items = items;
                 self.selected = 0;
                 self.visible = true;
 
-                // Render new popup
-                let new_popup = if let Some(popup) = rendered_popup {
-                    self.popup_lines = self.items.len().min(10);
-                    popup
-                } else {
-                    // render_current sets popup_lines internally
-                    match self.render_current() {
-                        PopupAction::Show(s) => s,
-                        other => return other,
-                    }
-                };
-
-                // If there was an old popup, erase it first
-                if old_lines > 0 {
-                    PopupAction::EraseAndShow {
-                        erase_lines: old_lines,
-                        show: new_popup,
-                    }
-                } else {
-                    PopupAction::Show(new_popup)
-                }
+                // Render inplace (overwrites previous popup without flicker)
+                self.render_inplace(prev)
             }
             _ => self.hide(),
         }
@@ -149,15 +125,9 @@ impl PopupState {
 
             KeyEvent::ArrowDown => {
                 if !self.items.is_empty() {
-                    let old_lines = self.popup_lines;
+                    let prev = self.popup_lines;
                     self.selected = (self.selected + 1) % self.items.len();
-                    match self.render_current() {
-                        PopupAction::Show(s) => PopupAction::EraseAndShow {
-                            erase_lines: old_lines,
-                            show: s,
-                        },
-                        other => other,
-                    }
+                    self.render_inplace(prev)
                 } else {
                     PopupAction::Nothing
                 }
@@ -165,16 +135,10 @@ impl PopupState {
 
             KeyEvent::ArrowUp => {
                 if !self.items.is_empty() {
-                    let old_lines = self.popup_lines;
+                    let prev = self.popup_lines;
                     let total = self.items.len();
                     self.selected = (self.selected + total - 1) % total;
-                    match self.render_current() {
-                        PopupAction::Show(s) => PopupAction::EraseAndShow {
-                            erase_lines: old_lines,
-                            show: s,
-                        },
-                        other => other,
-                    }
+                    self.render_inplace(prev)
                 } else {
                     PopupAction::Nothing
                 }
@@ -215,23 +179,7 @@ impl PopupState {
 
     /// Render the popup with the current selection, showing a sliding window of up to 10 items.
     fn render_current(&mut self) -> PopupAction {
-        let total = self.items.len();
-        let max_visible = 10;
-
-        // Calculate the visible window: a slice of up to 10 items around the selection
-        let (start, visible_items) = if total <= max_visible {
-            (0, &self.items[..])
-        } else {
-            // Slide the window so the selected item is always visible
-            let start = if self.selected < max_visible {
-                0
-            } else {
-                (self.selected - max_visible + 1).min(total - max_visible)
-            };
-            (start, &self.items[start..start + max_visible])
-        };
-
-        let selected_in_window = self.selected - start;
+        let (_, visible_items, selected_in_window) = self.visible_window();
 
         if let Some(rendered) = overlay::render_popup(
             visible_items,
@@ -245,6 +193,45 @@ impl PopupState {
         } else {
             self.hide()
         }
+    }
+
+    /// Render the popup inplace (overwrite previous, no flicker).
+    fn render_inplace(&mut self, prev_lines: usize) -> PopupAction {
+        let (_, visible_items, selected_in_window) = self.visible_window();
+
+        if let Some(rendered) = overlay::render_popup_inplace(
+            visible_items,
+            selected_in_window,
+            "",
+            &self.theme,
+            Some(self.terminal_cols),
+            prev_lines,
+        ) {
+            self.popup_lines = visible_items.len();
+            PopupAction::Show(rendered)
+        } else {
+            self.hide()
+        }
+    }
+
+    /// Calculate the visible window of items around the current selection.
+    /// Returns (start_index, visible_slice, selected_within_window).
+    fn visible_window(&self) -> (usize, &[CompletionItem], usize) {
+        let total = self.items.len();
+        let max_visible = 10;
+
+        let (start, visible) = if total <= max_visible {
+            (0, &self.items[..])
+        } else {
+            let start = if self.selected < max_visible {
+                0
+            } else {
+                (self.selected - max_visible + 1).min(total - max_visible)
+            };
+            (start, &self.items[start..start + max_visible])
+        };
+
+        (start, visible, self.selected - start)
     }
 
     /// Find the start of the current token in the last known buffer.

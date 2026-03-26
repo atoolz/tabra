@@ -204,9 +204,8 @@ pub async fn run(
                     let _ = stdout.flush();
                 }
                 TerminalWrite::ShowPopup(ansi) => {
-                    let _ = stdout.write_all(b"\x1b[s");
+                    // The rendered string already contains \x1b[s / \x1b[u
                     let _ = stdout.write_all(ansi.as_bytes());
-                    let _ = stdout.write_all(b"\x1b[u");
                     let _ = stdout.flush();
                 }
                 TerminalWrite::ErasePopup(lines) => {
