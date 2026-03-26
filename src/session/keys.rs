@@ -210,7 +210,14 @@ pub fn parse_bytes(buf: &[u8], escape_pending: bool) -> (Vec<KeyEvent>, bool) {
                 i += 1;
             }
             b if b >= 0x80 => {
-                // UTF-8 multi-byte: try to decode
+                // UTF-8 multi-byte: try to decode from remaining bytes.
+                // NOTE: if a multi-byte character is split across two read()
+                // calls, the incomplete bytes are emitted as Raw and will be
+                // forwarded as-is to the PTY. This is correct for passthrough
+                // (the shell reassembles them) but means KeyEvent::Char won't
+                // fire for the split character. A UTF-8 accumulator (like
+                // escape_pending) would fix this but adds complexity deferred
+                // to Phase 5.
                 let remaining = &buf[i..];
                 if let Some((ch, len)) = decode_utf8_char(remaining) {
                     events.push(KeyEvent::Char(ch));

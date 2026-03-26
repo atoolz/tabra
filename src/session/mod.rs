@@ -37,12 +37,15 @@ pub fn run(shell: Option<ShellType>) -> Result<()> {
     pty_pair.set_window_size(rows, cols)?;
     tracing::info!("PTY opened, terminal size: {}x{}", cols, rows);
 
-    // Demonstrate raw mode with scopeguard restoration.
-    // The event loop (Phase 5) will use this pattern for real.
-    // Pattern: enable raw mode, wrap in guard, guard restores on drop (including panic).
+    // Enable raw mode with scopeguard restoration.
+    // Guard restores terminal on drop, including on panic.
+    // Phase 5 will run the event loop between enable and the implicit drop at end of scope.
     let original_termios = pty::enable_raw_mode()?;
     let _raw_guard = scopeguard::guard(original_termios, |t| pty::restore_mode(&t));
-    // Guard fires on drop, restoring terminal. No explicit restore needed.
+
+    // TODO: Phase 5 event loop goes here (between raw mode enable and guard drop)
+
+    // Explicitly drop guard to restore terminal before printing
     drop(_raw_guard);
 
     eprintln!("tabra session: PTY wrapper mode is under development.");
