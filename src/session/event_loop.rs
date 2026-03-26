@@ -252,11 +252,18 @@ pub async fn run(
     // Wait for PTY processor to exit (child shell exited)
     let _ = pty_task.await;
 
-    // Clean up
+    // Clean up: abort tasks and await them to ensure they've stopped
+    // before closing the master fd.
     stdin_task.abort();
+    let _ = stdin_task.await;
+
     sigwinch_task.abort();
+    let _ = sigwinch_task.await;
+
     pty_writer_task.abort();
-    drop(write_tx); // close writer channel
+    let _ = pty_writer_task.await;
+
+    drop(write_tx); // close writer channel so writer thread exits
     let _ = writer_thread.join();
     let _ = pty_read_thread.join();
 
@@ -264,11 +271,9 @@ pub async fn run(
     let _ = child.wait();
 
     // The master fd was shared between read thread and writer task via from_raw_fd.
-    // Both use mem::forget to avoid double-close. The OwnedFd master will close
-    // on drop at the end of this function, which is the single close point.
-    // But we already forgot it in the threads, so we need to forget it here too
-    // to avoid the OwnedFd destructor closing an already-managed fd.
-    std::mem::forget(master);
+    // Both threads use mem::forget on their File to avoid closing the fd.
+    // The OwnedFd `master` is the sole owner and its drop here is the single close.
+    // (Do NOT mem::forget master: it must close so the PTY is properly cleaned up.)
 
     Ok(())
 }
