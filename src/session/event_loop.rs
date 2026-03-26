@@ -172,14 +172,11 @@ pub async fn run(
                 None => break,
             };
             // Drain pending events, keep only the latest
-            loop {
-                match tokio::time::timeout(debounce_dur, debounce_rx.recv()).await {
-                    Ok(Some((b, c))) => {
-                        buffer = b;
-                        cursor = c;
-                    }
-                    _ => break,
-                }
+            while let Ok(Some((b, c))) =
+                tokio::time::timeout(debounce_dur, debounce_rx.recv()).await
+            {
+                buffer = b;
+                cursor = c;
             }
             let mut p = debounce_popup.lock().await;
 
@@ -385,8 +382,7 @@ async fn handle_key_event(
             let current_token_start = p.find_token_start();
             let current_token =
                 &p.last_buffer[current_token_start..p.last_cursor.min(p.last_buffer.len())];
-            if first_insert.starts_with(current_token) {
-                let remaining = &first_insert[current_token.len()..];
+            if let Some(remaining) = first_insert.strip_prefix(current_token) {
                 // Clear ghost text
                 let _ = write_tx.send(TerminalWrite::ClearGhost(p.ghost_len)).await;
                 p.ghost_len = 0;
