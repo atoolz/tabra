@@ -50,13 +50,19 @@ enum State {
     InPayload,
 }
 
-impl OscParser {
-    pub fn new() -> Self {
+impl Default for OscParser {
+    fn default() -> Self {
         Self {
             state: State::Normal,
             buf: Vec::with_capacity(256),
             prefix_matched: 0,
         }
+    }
+}
+
+impl OscParser {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Feed a chunk of PTY output bytes through the parser.

@@ -67,7 +67,9 @@ impl PtyPair {
                 cmd.arg("--rcfile").arg(init_script_path);
             }
             s if s.ends_with("fish") => {
-                cmd.arg("-C").arg(format!("source {}", init_script_path));
+                // Quote the path for fish: replace ' with \' inside single quotes
+                let escaped = init_script_path.replace('\'', "'\\''");
+                cmd.arg("-C").arg(format!("source '{}'", escaped));
             }
             _ => {
                 // zsh and unknown shells: just spawn, integration via env
