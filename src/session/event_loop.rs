@@ -25,6 +25,8 @@ enum TerminalWrite {
     ShowPopup(String),
     /// Erase popup (N item lines + 2 border lines).
     ErasePopup(usize),
+    /// Erase old popup then show new one (atomic redraw).
+    EraseAndShow(usize, String),
 }
 
 /// Run the session event loop. This is the main entry point after PTY setup.
@@ -213,6 +215,17 @@ pub async fn run(
                     let _ = stdout.write_all(erase.as_bytes());
                     let _ = stdout.flush();
                 }
+                TerminalWrite::EraseAndShow(erase_lines, show_ansi) => {
+                    use tabra::render::overlay;
+                    // Erase old popup first
+                    let erase = overlay::erase_popup(erase_lines);
+                    let _ = stdout.write_all(erase.as_bytes());
+                    // Then show new popup
+                    let _ = stdout.write_all(b"\x1b[s");
+                    let _ = stdout.write_all(show_ansi.as_bytes());
+                    let _ = stdout.write_all(b"\x1b[u");
+                    let _ = stdout.flush();
+                }
             }
         }
         debug!("terminal writer exited");
@@ -327,6 +340,11 @@ async fn handle_key_event(
             let _ = write_tx.send(TerminalWrite::ErasePopup(lines)).await;
             let _ = pty_tx.send(bytes).await;
         }
+        PopupAction::EraseAndShow { erase_lines, show } => {
+            let _ = write_tx
+                .send(TerminalWrite::EraseAndShow(erase_lines, show))
+                .await;
+        }
         PopupAction::Nothing => {}
     }
 }
@@ -339,6 +357,11 @@ async fn dispatch_popup_action(action: PopupAction, write_tx: &mpsc::Sender<Term
         }
         PopupAction::Erase { lines } => {
             let _ = write_tx.send(TerminalWrite::ErasePopup(lines)).await;
+        }
+        PopupAction::EraseAndShow { erase_lines, show } => {
+            let _ = write_tx
+                .send(TerminalWrite::EraseAndShow(erase_lines, show))
+                .await;
         }
         PopupAction::Nothing => {}
         _ => {} // Other actions not expected from on_command_line

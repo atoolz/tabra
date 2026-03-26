@@ -27,6 +27,8 @@ pub enum PopupAction {
     },
     /// Erase popup then forward key to PTY (used for Enter with popup visible).
     EraseAndForward { lines: usize, bytes: Vec<u8> },
+    /// Erase old popup then show new one (used when popup content changes).
+    EraseAndShow { erase_lines: usize, show: String },
     /// No action needed.
     Nothing,
 }
@@ -84,16 +86,33 @@ impl PopupState {
                     return self.hide();
                 }
 
+                // Remember old popup size for erasing
+                let old_lines = if self.visible { self.popup_lines } else { 0 };
+
                 self.items = items;
                 self.selected = 0;
                 self.visible = true;
 
-                // Use daemon's pre-rendered popup if available
-                if let Some(popup) = rendered_popup {
+                // Render new popup
+                let new_popup = if let Some(popup) = rendered_popup {
                     self.popup_lines = self.items.len().min(10);
-                    PopupAction::Show(popup)
+                    popup
                 } else {
-                    self.render_current()
+                    // render_current sets popup_lines internally
+                    match self.render_current() {
+                        PopupAction::Show(s) => s,
+                        other => return other,
+                    }
+                };
+
+                // If there was an old popup, erase it first
+                if old_lines > 0 {
+                    PopupAction::EraseAndShow {
+                        erase_lines: old_lines,
+                        show: new_popup,
+                    }
+                } else {
+                    PopupAction::Show(new_popup)
                 }
             }
             _ => self.hide(),
@@ -130,9 +149,15 @@ impl PopupState {
 
             KeyEvent::ArrowDown => {
                 if !self.items.is_empty() {
-                    // Navigate through ALL items, not just visible 10
+                    let old_lines = self.popup_lines;
                     self.selected = (self.selected + 1) % self.items.len();
-                    self.render_current()
+                    match self.render_current() {
+                        PopupAction::Show(s) => PopupAction::EraseAndShow {
+                            erase_lines: old_lines,
+                            show: s,
+                        },
+                        other => other,
+                    }
                 } else {
                     PopupAction::Nothing
                 }
@@ -140,9 +165,16 @@ impl PopupState {
 
             KeyEvent::ArrowUp => {
                 if !self.items.is_empty() {
+                    let old_lines = self.popup_lines;
                     let total = self.items.len();
                     self.selected = (self.selected + total - 1) % total;
-                    self.render_current()
+                    match self.render_current() {
+                        PopupAction::Show(s) => PopupAction::EraseAndShow {
+                            erase_lines: old_lines,
+                            show: s,
+                        },
+                        other => other,
+                    }
                 } else {
                     PopupAction::Nothing
                 }
