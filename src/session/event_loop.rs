@@ -27,6 +27,10 @@ enum TerminalWrite {
     ErasePopup(usize),
     /// Erase old popup then show new one (atomic redraw).
     EraseAndShow(usize, String),
+    /// Show inline ghost text (dim suggestion after cursor, cleared on next keystroke).
+    GhostText(String),
+    /// Clear ghost text.
+    ClearGhost(usize),
 }
 
 /// Run the session event loop. This is the main entry point after PTY setup.
@@ -149,15 +153,73 @@ pub async fn run(
         debug!("stdin reader exited");
     });
 
+    // Debounce channel: CommandLine OSC events are buffered and only the latest
+    // is processed after 30ms of no new events. This prevents re-rendering the
+    // popup on every keystroke during fast typing.
+    let (debounce_tx, mut debounce_rx) = mpsc::channel::<(String, usize)>(16);
+    let debounce_popup = popup.clone();
+    let debounce_write_tx = write_tx.clone();
+    let debounce_task = tokio::spawn(async move {
+        let cwd = std::env::current_dir()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let debounce_dur = std::time::Duration::from_millis(30);
+
+        loop {
+            let (mut buffer, mut cursor) = match debounce_rx.recv().await {
+                Some(ev) => ev,
+                None => break,
+            };
+            // Drain pending events, keep only the latest
+            loop {
+                match tokio::time::timeout(debounce_dur, debounce_rx.recv()).await {
+                    Ok(Some((b, c))) => {
+                        buffer = b;
+                        cursor = c;
+                    }
+                    _ => break,
+                }
+            }
+            let mut p = debounce_popup.lock().await;
+
+            // Clear previous ghost text
+            if p.ghost_len > 0 {
+                let _ = debounce_write_tx
+                    .send(TerminalWrite::ClearGhost(p.ghost_len))
+                    .await;
+                p.ghost_len = 0;
+            }
+
+            let action = p.on_command_line(buffer.clone(), cursor, &cwd).await;
+            dispatch_popup_action(action, &debounce_write_tx).await;
+
+            // Show ghost text: the remaining part of the first suggestion
+            if !p.items.is_empty() {
+                let first_insert = p.items[0].insert.clone();
+                let token_start = p.find_token_start();
+                let end = cursor.min(buffer.len());
+                if token_start <= end {
+                    let current_token = &buffer[token_start..end];
+                    if first_insert.starts_with(current_token)
+                        && first_insert.len() > current_token.len()
+                    {
+                        let ghost = &first_insert[current_token.len()..];
+                        p.ghost_len = ghost.len();
+                        let _ = debounce_write_tx
+                            .send(TerminalWrite::GhostText(ghost.to_string()))
+                            .await;
+                    }
+                }
+            }
+        }
+    });
+
     // Task 2: Process PTY output from read thread, strip OSC, forward to terminal
     let pty_popup = popup.clone();
     let pty_terminal_tx = write_tx.clone();
     let pty_task = tokio::spawn(async move {
         let mut osc_parser = OscParser::new();
-        let cwd = std::env::current_dir()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
 
         while let Some(chunk) = pty_output_rx.recv().await {
             let (passthrough, events) = osc_parser.feed(&chunk);
@@ -171,9 +233,8 @@ pub async fn run(
             for event in events {
                 match event {
                     OscEvent::CommandLine { buffer, cursor } => {
-                        let mut popup = pty_popup.lock().await;
-                        let action = popup.on_command_line(buffer, cursor, &cwd).await;
-                        dispatch_popup_action(action, &pty_terminal_tx).await;
+                        // Debounce: send to channel, process after 30ms of quiet
+                        let _ = debounce_tx.send((buffer, cursor)).await;
                     }
                     OscEvent::PromptStart => {
                         let mut popup = pty_popup.lock().await;
@@ -225,6 +286,22 @@ pub async fn run(
                     let _ = stdout.write_all(b"\x1b[u");
                     let _ = stdout.flush();
                 }
+                TerminalWrite::GhostText(text) => {
+                    // Save cursor, write dim text, restore cursor
+                    // The ghost text appears after the cursor in dim gray
+                    let _ = stdout.write_all(b"\x1b[s\x1b[90m");
+                    let _ = stdout.write_all(text.as_bytes());
+                    let _ = stdout.write_all(b"\x1b[0m\x1b[u");
+                    let _ = stdout.flush();
+                }
+                TerminalWrite::ClearGhost(len) => {
+                    // Save cursor, overwrite ghost text with spaces, restore
+                    let _ = stdout.write_all(b"\x1b[s");
+                    let spaces = " ".repeat(len);
+                    let _ = stdout.write_all(spaces.as_bytes());
+                    let _ = stdout.write_all(b"\x1b[u");
+                    let _ = stdout.flush();
+                }
             }
         }
         debug!("terminal writer exited");
@@ -272,6 +349,9 @@ pub async fn run(
     sigwinch_task.abort();
     let _ = sigwinch_task.await;
 
+    debounce_task.abort();
+    let _ = debounce_task.await;
+
     pty_writer_task.abort();
     let _ = pty_writer_task.await;
 
@@ -297,6 +377,45 @@ async fn handle_key_event(
     write_tx: &mpsc::Sender<TerminalWrite>,
     pty_tx: &mpsc::Sender<Vec<u8>>,
 ) {
+    // ArrowRight with ghost text: accept ghost text by typing it into the shell
+    if event == KeyEvent::ArrowRight {
+        let mut p = popup.lock().await;
+        if p.ghost_len > 0 && !p.items.is_empty() {
+            let first_insert = p.items[0].insert.clone();
+            let current_token_start = p.find_token_start();
+            let current_token =
+                &p.last_buffer[current_token_start..p.last_cursor.min(p.last_buffer.len())];
+            if first_insert.starts_with(current_token) {
+                let remaining = &first_insert[current_token.len()..];
+                // Clear ghost text
+                let _ = write_tx.send(TerminalWrite::ClearGhost(p.ghost_len)).await;
+                p.ghost_len = 0;
+                // Type the remaining text into the shell
+                let mut inject = remaining.as_bytes().to_vec();
+                inject.push(b' '); // add space after completion
+                let _ = pty_tx.send(inject).await;
+                // Hide popup
+                if p.visible {
+                    let lines = p.popup_lines;
+                    p.visible = false;
+                    p.items.clear();
+                    p.popup_lines = 0;
+                    let _ = write_tx.send(TerminalWrite::ErasePopup(lines)).await;
+                }
+                return;
+            }
+        }
+        drop(p);
+    }
+
+    // Clear ghost text on any keystroke (it'll be re-rendered after debounce)
+    {
+        let mut p = popup.lock().await;
+        if p.ghost_len > 0 {
+            let _ = write_tx.send(TerminalWrite::ClearGhost(p.ghost_len)).await;
+            p.ghost_len = 0;
+        }
+    }
     let action = popup.lock().await.on_key(&event);
     match action {
         PopupAction::ForwardKey(bytes) => {

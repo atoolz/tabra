@@ -34,9 +34,8 @@ pub fn run(shell: Option<ShellType>) -> Result<()> {
 
     info!("starting session with shell: {}", shell_path);
 
-    // Ensure daemon is running
-    if tabra::ipc::client::request_status().is_err() {
-        info!("daemon not running, starting...");
+    // Ensure daemon is running (silently)
+    if !tabra::ipc::client::is_daemon_running() {
         std::process::Command::new("tabra")
             .arg("daemon")
             .stdin(std::process::Stdio::null())
@@ -45,10 +44,9 @@ pub fn run(shell: Option<ShellType>) -> Result<()> {
             .spawn()
             .context("failed to start tabra daemon")?;
 
-        // Wait for daemon to be ready
         for _ in 0..10 {
             std::thread::sleep(std::time::Duration::from_millis(100));
-            if tabra::ipc::client::request_status().is_ok() {
+            if tabra::ipc::client::is_daemon_running() {
                 break;
             }
         }
